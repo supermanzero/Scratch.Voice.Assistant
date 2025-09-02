@@ -6,19 +6,26 @@
   
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting"
+  ],
+  
+  "host_permissions": [
+    "https://scratch.mit.edu/*"
   ],
   
   "content_scripts": [
     {
       "matches": [
         "https://scratch.mit.edu/projects/editor/*",
-        "https://scratch.mit.edu/projects/*",
+        "https://scratch.mit.edu/projects/*/editor",
+        "https://scratch.mit.edu/projects/*/editor/*",
         "https://scratch.mit.edu/create*"
       ],
       "js": ["src/content/main.js"],
       "css": ["assets/css/content.css"],
-      "run_at": "document_end"
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
 

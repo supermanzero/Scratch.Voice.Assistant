@@ -110,20 +110,7 @@ body {
   font-weight: 500;
 }
 
-.debug-btn {
-  padding: 2px 8px;
-  font-size: 11px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 4px;
-  background: hsl(var(--secondary));
-  color: hsl(var(--secondary-foreground));
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-}
 
-.debug-btn:hover {
-  background: hsl(var(--muted));
-}
 
 /* 快速操作 */
 .quick-actions {
@@ -334,6 +321,87 @@ body {
   border-color: hsl(var(--ring));
   box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
 }
+
+/* 滑块容器 */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.setting-slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: hsl(var(--muted));
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.setting-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  cursor: pointer;
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.setting-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  cursor: pointer;
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.slider-value {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  min-width: 30px;
+  text-align: right;
+}
+
+/* 测试语音按钮 */
+.test-voice-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  width: 100%;
+  justify-content: center;
+}
+
+.test-voice-btn:hover {
+  background: hsl(var(--muted));
+}
+
+.test-voice-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.test-voice-btn .btn-icon {
+  width: 14px;
+  height: 14px;
+}
+
+
 
 /* 底部 */
 .popup-footer {
