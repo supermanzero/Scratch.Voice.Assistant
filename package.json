@@ -1,0 +1,27 @@
+{
+  "name": "scratch-voice-assistant",
+  "version": "1.0.0",
+  "description": "Scratch 教程语音助手 Chrome 扩展",
+  "main": "src/content/main.js",
+  "scripts": {
+    "dev": "echo '开发模式：请在 Chrome 扩展管理页面加载 unpacked extension'",
+    "build": "echo '构建完成：项目已准备好打包'",
+    "pack": "zip -r scratch-voice-assistant.zip . -x 'node_modules/*' '.git/*' '*.zip'",
+    "test": "echo '测试：请在 Scratch 编辑器页面测试功能'"
+  },
+  "keywords": [
+    "scratch",
+    "education",
+    "voice-assistant",
+    "chrome-extension",
+    "tutorial"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/scratch-voice-assistant.git"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}

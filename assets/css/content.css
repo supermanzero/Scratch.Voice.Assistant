@@ -1,0 +1,302 @@
+/* Scratch 教程语音助手 - 基于 shadcn/ui 设计系统 */
+
+:root {
+  /* shadcn/ui 颜色变量 */
+  --primary: 222.2 84% 4.9%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222.2 84% 4.9%;
+  --border: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+  --background: 0 0% 100%;
+  --card: 0 0% 100%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+}
+
+/* 悬浮控件容器 */
+.scratch-voice-assistant {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+
+/* 主控件卡片 */
+.assistant-widget {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 16px;
+  min-width: 280px;
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.95);
+  transition: all 0.2s ease-in-out;
+}
+
+.assistant-widget:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* 折叠状态 */
+.assistant-widget.collapsed {
+  padding: 12px;
+  min-width: auto;
+}
+
+/* 标题栏 */
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.title-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widget-title {
+  font-weight: 600;
+  color: hsl(var(--primary));
+  font-size: 16px;
+  margin: 0;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: hsl(142.1 76.2% 36.3% / 0.1);
+}
+
+.status-icon {
+  width: 12px !important;
+  height: 12px !important;
+  filter: brightness(0) saturate(100%) invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%);
+}
+
+.toggle-btn {
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.toggle-btn:hover {
+  background: hsl(var(--muted));
+}
+
+/* 播放控制器 */
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.control-btn {
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  color: hsl(var(--secondary-foreground));
+}
+
+.control-btn:hover {
+  background: hsl(var(--muted));
+  transform: translateY(-1px);
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.control-btn.primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.control-btn.primary:hover {
+  background: hsl(var(--primary));
+  opacity: 0.9;
+}
+
+/* 教程选择器 */
+.tutorial-selector {
+  margin-bottom: 12px;
+}
+
+.tutorial-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--secondary-foreground));
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.tutorial-select:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+/* 进度指示器 */
+.progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: hsl(var(--muted));
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: hsl(var(--primary));
+  transition: width 0.3s ease-in-out;
+}
+
+/* 设置面板 */
+.settings-panel {
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.setting-label {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-input {
+  width: 80px;
+  height: 4px;
+  background: hsl(var(--muted));
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* 动画效果 */
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .scratch-voice-assistant {
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .assistant-widget {
+    min-width: 240px;
+    padding: 12px;
+  }
+  
+  .control-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* 隐藏状态 */
+.hidden {
+  display: none !important;
+}
+
+/* Icons8 图标样式 */
+.icon {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%);
+  transition: filter 0.2s ease-in-out;
+  pointer-events: none; /* 防止图标阻止按钮点击 */
+}
+
+/* 按钮悬停时的图标效果 */
+.control-btn:hover .icon,
+.toggle-btn:hover .icon {
+  filter: brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(120%) contrast(97%);
+}
+
+/* 主要按钮中的图标 */
+.control-btn.primary .icon {
+  filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(7500%) hue-rotate(109deg) brightness(107%) contrast(107%);
+}
+
+.control-btn.primary:hover .icon {
+  filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(7500%) hue-rotate(109deg) brightness(120%) contrast(107%);
+}
+
+/* 确保图标在按钮中居中 */
+.control-btn .icon,
+.toggle-btn .icon {
+  display: block;
+  margin: auto;
+}
+
+/* 禁用状态的图标 */
+.control-btn:disabled .icon {
+  filter: brightness(0) saturate(100%) invert(60%) sepia(11%) saturate(200%) hue-rotate(176deg) brightness(94%) contrast(86%);
+  opacity: 0.5;
+}
