@@ -314,6 +314,7 @@ body {
   color: hsl(var(--secondary-foreground));
   font-size: 12px;
   cursor: pointer;
+  max-width: 200px;
 }
 
 .setting-select:focus {

@@ -167,6 +167,7 @@ class ScratchVoiceAssistant {
       },
 
       async speakWithGoogle(text, onStart, onEnd, onError) {
+        console.log('speakWithGoogle', text);
         try {
           // 构建 Google TTS URL
           const maxLength = 200;
@@ -703,18 +704,18 @@ class ScratchVoiceAssistant {
             this.isPlaying = false;
             this.updatePlayButton();
             // 尝试浏览器 TTS 作为回退
-            this.fallbackToBasicTTS(text);
+            // this.fallbackToBasicTTS(text);
           }
         );
       } else {
-        await this.fallbackToBasicTTS(text);
+        // await this.fallbackToBasicTTS(text);
       }
     } catch (error) {
       this.isPlaying = false;
       this.updatePlayButton();
       // 最后的回退尝试
       try {
-        await this.fallbackToBasicTTS(text);
+        // await this.fallbackToBasicTTS(text);
       } catch (fallbackError) {
         alert('语音播放失败，请检查浏览器设置或尝试刷新页面');
       }
@@ -1349,7 +1350,8 @@ function isScratchEditor() {
   const scratchEditorPatterns = [
     'scratch.mit.edu/projects/editor/',
     'scratch.mit.edu/projects/',
-    'scratch.mit.edu/create'
+    'scratch.mit.edu/create',
+    'machinelearningforkids.co.uk/scratch'
   ];
 
   return scratchEditorPatterns.some(pattern => url.includes(pattern));

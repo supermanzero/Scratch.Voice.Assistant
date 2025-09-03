@@ -64,7 +64,8 @@ class PopupManager {
       'scratch.mit.edu/projects/editor/',
       'scratch.mit.edu/projects/',
       'scratch.mit.edu/create',
-      'scratch.mit.edu/projects/create'
+      'scratch.mit.edu/projects/create',
+      'machinelearningforkids.co.uk/scratch'
     ];
 
     return scratchEditorPatterns.some(pattern => url.includes(pattern));

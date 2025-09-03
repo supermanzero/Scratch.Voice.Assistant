@@ -11,7 +11,8 @@
   ],
   
   "host_permissions": [
-    "https://scratch.mit.edu/*"
+    "https://scratch.mit.edu/*",
+    "https://machinelearningforkids.co.uk/*"
   ],
   
   "content_scripts": [
@@ -20,7 +21,8 @@
         "https://scratch.mit.edu/projects/editor/*",
         "https://scratch.mit.edu/projects/*/editor",
         "https://scratch.mit.edu/projects/*/editor/*",
-        "https://scratch.mit.edu/create*"
+        "https://scratch.mit.edu/create*",
+        "https://machinelearningforkids.co.uk/*"
       ],
       "js": ["src/content/main.js"],
       "css": ["assets/css/content.css"],
@@ -54,7 +56,7 @@
   "web_accessible_resources": [
     {
       "resources": ["assets/css/*", "assets/icons/*"],
-      "matches": ["https://scratch.mit.edu/*"]
+      "matches": ["https://scratch.mit.edu/*","https://machinelearningforkids.co.uk/*"]
     }
   ]
 }
