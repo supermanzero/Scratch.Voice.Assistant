@@ -312,10 +312,12 @@
 .setting-label input[type="checkbox"]:checked + .checkmark::after {
   content: '';
   position: absolute;
-  left: 3px;
-  top: 0px;
+  left: 50%;
+  top: 50%;
   width: 3px;
   height: 7px;
+  margin-left: -2px;
+  margin-top: -5px;
   border: solid hsl(var(--primary-foreground));
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
