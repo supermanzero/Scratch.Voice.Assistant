@@ -10,7 +10,10 @@ chrome.runtime.onInstalled.addListener((details) => {
       speechRate: 1.0,
       speechVolume: 0.8,
       autoPlay: false,
-      language: 'zh-CN'
+      language: 'zh-CN',
+      voiceEngine: 'baidu',
+      voiceSelect: 'baidu-110', // 度小童
+      highlight: true
     }
   });
 });
@@ -29,6 +32,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'getTutorialProgress':
       handleGetTutorialProgress(request.tutorialId, sendResponse);
       return true;
+
+    case 'fetchTTSAudio':
+      handleFetchTTSAudio(request, sendResponse);
+      return true; // 异步响应
       
     default:
       console.log('未知消息类型:', request.action);
@@ -232,6 +239,168 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     console.log('检测到 Scratch 编辑器页面:', tab.url);
   }
 });
+
+// 处理TTS音频获取请求（解决CORS问题）
+async function handleFetchTTSAudio(request, sendResponse) {
+  try {
+    const { engine, text, settings } = request;
+    let response;
+
+    switch (engine) {
+      case 'google':
+        const googleUrl = await buildGoogleTTSUrl(text, settings);
+        response = await fetch(googleUrl);
+        break;
+      case 'baidu':
+        const baiduRequest = await buildBaiduTTSRequest(text, settings);
+        // 构建form data
+        const formData = new URLSearchParams();
+        Object.keys(baiduRequest.data).forEach(key => {
+          formData.append(key, baiduRequest.data[key]);
+        });
+        
+        response = await fetch(baiduRequest.url, {
+          method: baiduRequest.method,
+          headers: baiduRequest.headers,
+          body: formData
+        });
+        break;
+      default:
+        throw new Error('不支持的TTS引擎');
+    }
+
+    if (!response.ok) {
+      throw new Error(`TTS请求失败: ${response.status} ${response.statusText}`);
+    }
+
+    // 检查响应内容类型
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      // 如果返回JSON，可能是错误信息
+      const jsonResponse = await response.json();
+      if (jsonResponse.error_code) {
+        throw new Error(`百度TTS API错误: ${jsonResponse.error_msg || jsonResponse.error_code}`);
+      }
+    }
+
+    // 将音频转换为Base64
+    const arrayBuffer = await response.arrayBuffer();
+    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    
+    sendResponse({ 
+      success: true, 
+      audioData: `data:audio/mp3;base64,${base64Audio}` 
+    });
+
+  } catch (error) {
+    console.error('TTS音频获取失败:', error);
+    sendResponse({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+}
+
+// 构建Google TTS URL
+async function buildGoogleTTSUrl(text, settings) {
+  const maxLength = 200;
+  const truncatedText = text.length > maxLength ? text.substring(0, maxLength) : text;
+
+  const params = new URLSearchParams({
+    ie: 'UTF-8',
+    q: truncatedText,
+    tl: settings.language || 'zh-CN',
+    client: 'tw-ob',
+    ttsspeed: settings.speed || 1.0,
+    total: 1,
+    idx: 0
+  });
+
+  return `https://translate.google.com/translate_tts?${params.toString()}`;
+}
+
+// 构建百度TTS请求（使用正确的API格式）
+async function buildBaiduTTSRequest(text, settings) {
+  const maxLength = 200;
+  const truncatedText = text.length > maxLength ? text.substring(0, maxLength) : text;
+  
+  // 从语音选择中提取语音ID
+  const voiceId = settings.voice ? settings.voice.replace('baidu-', '') : '1';
+  
+  // 使用默认API密钥
+  const DEFAULT_AK = "FeNVdlSqSTt9IO3Bz4SCDiVj";
+  const DEFAULT_SK = "NL9bpxsOt7pxf1m3v43G5vPD5CIjoSFo";
+  
+  // 优先使用用户配置的密钥，如果没有则使用默认密钥
+  const result = await chrome.storage.sync.get(['baiduApiKeys']);
+  const userApiKeys = result.baiduApiKeys;
+  
+  const ak = (userApiKeys && userApiKeys.ak) ? userApiKeys.ak : DEFAULT_AK;
+  const sk = (userApiKeys && userApiKeys.sk) ? userApiKeys.sk : DEFAULT_SK;
+  
+  // 获取access token
+  const accessToken = await getBaiduAccessToken(ak, sk);
+  
+  const requestData = {
+    tex: truncatedText,
+    tok: accessToken,
+    cuid: 'scratch-voice-assistant',
+    ctp: '1',
+    lan: 'zh',
+    spd: Math.round((settings.speed || 1.0) * 5).toString(), // 百度TTS速度范围0-15
+    pit: '5', // 音调
+    vol: Math.round((settings.volume || 0.8) * 15).toString(), // 百度TTS音量范围0-15
+    per: voiceId, // 语音人选择
+    aue: '3' // 音频格式：3为mp3
+  };
+
+  return {
+    url: 'https://tsn.baidu.com/text2audio',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': '*/*'
+    },
+    data: requestData
+  };
+}
+
+// 获取百度API访问令牌
+async function getBaiduAccessToken(ak, sk) {
+  try {
+    // 检查缓存的token是否还有效
+    const result = await chrome.storage.local.get(['baiduAccessToken', 'tokenExpireTime']);
+    const now = Date.now();
+    
+    if (result.baiduAccessToken && result.tokenExpireTime && now < result.tokenExpireTime) {
+      return result.baiduAccessToken;
+    }
+    
+    // 获取新的token
+    const tokenUrl = `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${ak}&client_secret=${sk}`;
+    
+    const response = await fetch(tokenUrl, { method: 'POST' });
+    if (!response.ok) {
+      throw new Error(`获取百度API token失败: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(`百度API认证失败: ${data.error_description || data.error}`);
+    }
+    
+    // 缓存token（有效期通常为30天，这里设置为25天以确保安全）
+    const expireTime = now + (25 * 24 * 60 * 60 * 1000);
+    await chrome.storage.local.set({
+      baiduAccessToken: data.access_token,
+      tokenExpireTime: expireTime
+    });
+    
+    return data.access_token;
+  } catch (error) {
+    throw new Error(`获取百度API访问令牌失败: ${error.message}`);
+  }
+}
 
 // 处理扩展图标点击
 chrome.action.onClicked.addListener((tab) => {

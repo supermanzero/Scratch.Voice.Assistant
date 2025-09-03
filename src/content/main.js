@@ -9,9 +9,13 @@ class ScratchVoiceAssistant {
     this.isPlaying = false;
     this.ttsService = null;
     this.hasUserInteracted = false;
+    this.autoPlayTimer = null;
+    this.countdownTimer = null;
+    this.isAutoPlaying = false;
 
     this.init();
     this.setupMessageListener();
+    this.setupStorageListener();
   }
 
   async init() {
@@ -40,13 +44,23 @@ class ScratchVoiceAssistant {
       const result = await chrome.storage.sync.get(['settings']);
       if (result.settings) {
         const ttsSettings = {
-          engine: result.settings.voiceEngine || 'browser',
+          engine: result.settings.voiceEngine || 'baidu',
           language: result.settings.language || 'zh-CN',
-          voice: result.settings.voiceSelect || '',
+          voice: result.settings.voiceSelect || 'baidu-110', // 度小童
           speed: result.settings.speechRate || 1.0,
           volume: result.settings.speechVolume || 0.8
         };
         this.ttsService.updateSettings(ttsSettings);
+      } else {
+        // 如果没有保存的设置，使用默认的百度TTS度小童
+        const defaultTtsSettings = {
+          engine: 'baidu',
+          language: 'zh-CN',
+          voice: 'baidu-110', // 度小童
+          speed: 1.0,
+          volume: 0.8
+        };
+        this.ttsService.updateSettings(defaultTtsSettings);
       }
     } catch (error) {
       this.ttsService = null;
@@ -57,9 +71,9 @@ class ScratchVoiceAssistant {
   createSimpleTTSService() {
     return {
       settings: {
-        engine: 'browser',
+        engine: 'baidu',
         language: 'zh-CN',
-        voice: '',
+        voice: 'baidu-110', // 度小童
         speed: 1.0,
         volume: 0.8
       },
@@ -82,6 +96,13 @@ class ScratchVoiceAssistant {
             try {
               await this.speakWithGoogle(text, onStart, onEnd, onError);
             } catch (googleError) {
+              await this.speakWithBrowser(text, onStart, onEnd, onError);
+            }
+          } else if (this.settings.engine === 'baidu') {
+            // 尝试百度 TTS
+            try {
+              await this.speakWithBaidu(text, onStart, onEnd, onError);
+            } catch (baiduError) {
               await this.speakWithBrowser(text, onStart, onEnd, onError);
             }
           } else {
@@ -169,24 +190,19 @@ class ScratchVoiceAssistant {
       async speakWithGoogle(text, onStart, onEnd, onError) {
         console.log('speakWithGoogle', text);
         try {
-          // 构建 Google TTS URL
-          const maxLength = 200;
-          const truncatedText = text.length > maxLength ? text.substring(0, maxLength) : text;
-
-          const params = new URLSearchParams({
-            ie: 'UTF-8',
-            q: truncatedText,
-            tl: this.settings.language,
-            client: 'tw-ob',
-            ttsspeed: this.settings.speed,
-            total: 1,
-            idx: 0
+          // 通过background service worker获取音频（解决CORS问题）
+          const response = await chrome.runtime.sendMessage({
+            action: 'fetchTTSAudio',
+            engine: 'google',
+            text: text,
+            settings: this.settings
           });
 
-          const audioUrl = `https://translate.google.com/translate_tts?${params.toString()}`;
+          if (!response.success) {
+            throw new Error(response.error || 'Google TTS 请求失败');
+          }
 
           this.currentAudio = new Audio();
-          this.currentAudio.crossOrigin = 'anonymous';
           this.currentAudio.volume = this.settings.volume;
           this.currentAudio.playbackRate = this.settings.speed;
 
@@ -205,7 +221,47 @@ class ScratchVoiceAssistant {
             throw new Error('Google TTS 播放失败');
           };
 
-          this.currentAudio.src = audioUrl;
+          this.currentAudio.src = response.audioData;
+          await this.currentAudio.play();
+        } catch (error) {
+          throw error;
+        }
+      },
+
+      async speakWithBaidu(text, onStart, onEnd, onError) {
+        console.log('speakWithBaidu', text);
+        try {
+          // 通过background service worker获取音频（解决CORS问题）
+          const response = await chrome.runtime.sendMessage({
+            action: 'fetchTTSAudio',
+            engine: 'baidu',
+            text: text,
+            settings: this.settings
+          });
+
+          if (!response.success) {
+            throw new Error(response.error || '百度TTS 请求失败');
+          }
+
+          this.currentAudio = new Audio();
+          this.currentAudio.volume = this.settings.volume;
+
+          this.currentAudio.onloadstart = () => {
+            this.isPlaying = true;
+            if (onStart) onStart();
+          };
+
+          this.currentAudio.onended = () => {
+            this.isPlaying = false;
+            if (onEnd) onEnd();
+          };
+
+          this.currentAudio.onerror = (error) => {
+            this.isPlaying = false;
+            throw new Error('百度TTS播放失败，可能需要API密钥');
+          };
+
+          this.currentAudio.src = response.audioData;
           await this.currentAudio.play();
         } catch (error) {
           throw error;
@@ -375,6 +431,10 @@ class ScratchVoiceAssistant {
       this.bindEvents();
       console.log('事件已绑定');
 
+      // 添加拖动功能
+      this.initDragFunctionality();
+      console.log('拖动功能已初始化');
+
       // 加载教程数据
       this.loadTutorials();
       console.log('教程数据已加载');
@@ -383,9 +443,13 @@ class ScratchVoiceAssistant {
       this.loadWidgetSettings();
       console.log('浮窗设置已加载');
 
-      // 加载语音选项
-      this.loadWidgetVoices();
+      // 加载语音选项（根据默认的百度TTS）
+      this.loadWidgetVoiceOptions('baidu');
       console.log('语音选项已加载');
+
+      // 恢复上次选择的教程
+      this.restoreLastTutorial();
+      console.log('上次教程状态已恢复');
 
       console.log('语音助手浮窗创建完成');
     } catch (error) {
@@ -454,16 +518,24 @@ class ScratchVoiceAssistant {
                 高亮显示相关积木
               </label>
             </div>
-            <div class="setting-item">
+            <div class="setting-item hidden">
+              <span class="setting-text">语音引擎</span>
+              <select class="setting-select" id="voiceEngineSetting">
+                <option value="browser">浏览器TTS</option>
+                <option value="google">Google TTS</option>
+                <option value="baidu" selected>百度TTS</option>
+              </select>
+            </div>
+            <div class="setting-item hidden">
               <span class="setting-text">语音选择</span>
               <select class="setting-select" id="voiceSelectSetting">
                 <option value="">加载中...</option>
               </select>
             </div>
-            <div class="setting-item">
+            <div class="setting-item hidden">
               <span class="setting-text">语音语言</span>
               <select class="setting-select" id="languageSetting">
-                <option value="zh-CN">中文</option>
+                <option value="zh-CN" selected>中文</option>
                 <option value="en-US">English</option>
               </select>
             </div>
@@ -518,14 +590,16 @@ class ScratchVoiceAssistant {
     // 设置控制
     const autoPlaySetting = this.widget.querySelector('#autoPlaySetting');
     const highlightSetting = this.widget.querySelector('#highlightSetting');
+    const voiceEngineSetting = this.widget.querySelector('#voiceEngineSetting');
     const languageSetting = this.widget.querySelector('#languageSetting');
     const voiceSelectSetting = this.widget.querySelector('#voiceSelectSetting');
     const speechRateSetting = this.widget.querySelector('#speechRateSetting');
     const speechVolumeSetting = this.widget.querySelector('#speechVolumeSetting');
     const testVoiceBtn = this.widget.querySelector('#testVoiceBtn');
 
-    if (autoPlaySetting) autoPlaySetting.addEventListener('change', () => this.saveWidgetSettings());
+    if (autoPlaySetting) autoPlaySetting.addEventListener('change', () => this.onAutoPlaySettingChange());
     if (highlightSetting) highlightSetting.addEventListener('change', () => this.saveWidgetSettings());
+    if (voiceEngineSetting) voiceEngineSetting.addEventListener('change', () => this.onWidgetVoiceEngineChange());
     if (languageSetting) languageSetting.addEventListener('change', () => this.saveWidgetSettings());
     if (voiceSelectSetting) voiceSelectSetting.addEventListener('change', () => this.saveWidgetSettings());
     if (speechRateSetting) speechRateSetting.addEventListener('input', () => this.onWidgetSpeechRateChange());
@@ -612,16 +686,74 @@ class ScratchVoiceAssistant {
     this.tutorials = tutorials;
   }
 
+  // 恢复上次选择的教程
+  async restoreLastTutorial() {
+    try {
+      const result = await chrome.storage.local.get(['currentTutorial', 'currentStepIndex']);
+      if (result.currentTutorial && this.tutorials[result.currentTutorial]) {
+        console.log('恢复上次教程:', result.currentTutorial, '步骤:', result.currentStepIndex);
+        
+        this.currentTutorial = this.tutorials[result.currentTutorial];
+        this.currentStepIndex = result.currentStepIndex || 0;
+        
+        // 更新下拉选择
+        const tutorialSelect = this.widget.querySelector('#tutorialSelect');
+        if (tutorialSelect) {
+          tutorialSelect.value = result.currentTutorial;
+        }
+        
+        this.updateUI();
+      }
+    } catch (error) {
+      console.log('恢复教程状态失败:', error);
+    }
+  }
+
   selectTutorial(tutorialKey) {
     if (!tutorialKey || !this.tutorials[tutorialKey]) {
       this.currentTutorial = null;
       this.updateUI();
+      // 清空下拉选择
+      const tutorialSelect = this.widget.querySelector('#tutorialSelect');
+      if (tutorialSelect) {
+        tutorialSelect.value = '';
+      }
       return;
     }
 
     this.currentTutorial = this.tutorials[tutorialKey];
     this.currentStepIndex = 0;
+    
+    // 清除之前的自动播放定时器
+    this.clearAutoPlayTimer();
+    
+    // 同步更新浮窗的下拉选择
+    const tutorialSelect = this.widget.querySelector('#tutorialSelect');
+    if (tutorialSelect) {
+      tutorialSelect.value = tutorialKey;
+      console.log('已同步教程选择到浮窗:', tutorialKey);
+    }
+    
+    // 保存当前选择的教程到存储，以便其他组件可以访问
+    try {
+      chrome.storage.local.set({ 
+        currentTutorial: tutorialKey,
+        currentStepIndex: this.currentStepIndex 
+      });
+    } catch (error) {
+      console.log('保存教程状态失败:', error);
+    }
+    
     this.updateUI();
+    
+    // 如果开启了自动播放，自动开始第一步
+    const autoPlaySetting = this.widget.querySelector('#autoPlaySetting');
+    if (autoPlaySetting?.checked) {
+      console.log('自动播放已开启，开始播放第一步');
+      setTimeout(() => {
+        this.playCurrentStep();
+      }, 500); // 稍微延迟以确保UI更新完成
+    }
   }
 
   updateUI() {
@@ -667,9 +799,18 @@ class ScratchVoiceAssistant {
       this.hasUserInteracted = true;
     }
 
+    // 如果正在倒计时，点击按钮取消自动播放
+    if (this.isAutoPlaying && !this.isPlaying) {
+      console.log('用户取消自动播放');
+      this.clearAutoPlayTimer();
+      return;
+    }
+
     if (this.isPlaying) {
       this.stopSpeech();
     } else {
+      // 手动播放时，暂时停止自动播放定时器
+      this.clearAutoPlayTimer();
       this.playCurrentStep();
     }
   }
@@ -684,7 +825,7 @@ class ScratchVoiceAssistant {
   }
 
   async speak(text) {
-    // 停止当前播放
+    // 停止当前播放和自动播放定时器
     this.stopSpeech();
 
     try {
@@ -699,6 +840,8 @@ class ScratchVoiceAssistant {
           () => {
             this.isPlaying = false;
             this.updatePlayButton();
+            // 语音播放完成后，检查是否需要自动播放下一步
+            this.checkAutoPlayNext();
           },
           (error) => {
             this.isPlaying = false;
@@ -771,6 +914,9 @@ class ScratchVoiceAssistant {
   }
 
   stopSpeech() {
+    // 清除自动播放定时器
+    this.clearAutoPlayTimer();
+    
     if (this.ttsService) {
       this.ttsService.stop();
     } else if (speechSynthesis.speaking) {
@@ -780,28 +926,175 @@ class ScratchVoiceAssistant {
     this.updatePlayButton();
   }
 
-  updatePlayButton() {
+  updatePlayButton(countdown = null) {
     const playBtn = this.widget.querySelector('#playBtn');
-    playBtn.innerHTML = this.isPlaying ? this.getIcon('pause') : this.getIcon('play');
+    
+    if (countdown !== null && countdown > 0) {
+      // 显示倒计时
+      playBtn.innerHTML = `<span class="countdown-text">${countdown}</span>`;
+      playBtn.classList.add('countdown-mode');
+      playBtn.title = '点击取消自动播放';
+    } else if (this.isPlaying) {
+      // 播放中，显示暂停图标
+      playBtn.innerHTML = this.getIcon('pause');
+      playBtn.classList.remove('countdown-mode');
+      playBtn.title = '暂停';
+    } else {
+      // 未播放，显示播放图标
+      playBtn.innerHTML = this.getIcon('play');
+      playBtn.classList.remove('countdown-mode');
+      playBtn.title = '播放/暂停';
+    }
+  }
+
+  // 检查是否需要自动播放下一步
+  async checkAutoPlayNext() {
+    // 获取自动播放设置
+    const autoPlaySetting = this.widget.querySelector('#autoPlaySetting');
+    const isAutoPlayEnabled = autoPlaySetting?.checked || false;
+    
+    if (!isAutoPlayEnabled || !this.currentTutorial) {
+      return;
+    }
+    
+    // 检查是否还有下一步
+    if (this.currentStepIndex < this.currentTutorial.steps.length - 1) {
+      console.log('自动播放：准备播放下一步，5秒后开始');
+      this.scheduleAutoPlayNext();
+    } else {
+      console.log('教程已完成，停止自动播放');
+      this.isAutoPlaying = false;
+    }
+  }
+
+  // 安排自动播放下一步
+  scheduleAutoPlayNext() {
+    this.clearAutoPlayTimer();
+    this.isAutoPlaying = true;
+    
+    // 显示自动播放状态并开始倒计时
+    this.startAutoPlayCountdown();
+    
+    this.autoPlayTimer = setTimeout(() => {
+      if (this.isAutoPlaying && this.currentTutorial) {
+        console.log('自动播放：切换到下一步');
+        this.nextStep();
+      }
+    }, 5000); // 5秒间隔
+  }
+
+  // 开始自动播放倒计时
+  startAutoPlayCountdown() {
+    let countdown = 5;
+    this.updatePlayButton(countdown);
+    
+    const countdownTimer = setInterval(() => {
+      countdown--;
+      if (countdown > 0 && this.isAutoPlaying) {
+        this.updatePlayButton(countdown);
+      } else {
+        clearInterval(countdownTimer);
+        if (this.isAutoPlaying) {
+          // 倒计时结束，显示正常的播放按钮
+          this.updatePlayButton();
+        }
+      }
+    }, 1000);
+    
+    // 保存倒计时定时器的引用
+    this.countdownTimer = countdownTimer;
+  }
+
+  // 清除自动播放定时器
+  clearAutoPlayTimer() {
+    if (this.autoPlayTimer) {
+      clearTimeout(this.autoPlayTimer);
+      this.autoPlayTimer = null;
+    }
+    
+    // 清除倒计时定时器
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+    
+    this.isAutoPlaying = false;
+    
+    // 恢复按钮正常状态
+    this.updatePlayButton();
+  }
+
+  // 处理自动播放设置变化
+  onAutoPlaySettingChange() {
+    const autoPlaySetting = this.widget.querySelector('#autoPlaySetting');
+    const isEnabled = autoPlaySetting?.checked || false;
+    
+    console.log('自动播放设置变化:', isEnabled);
+    
+    if (!isEnabled) {
+      // 关闭自动播放时，清除定时器
+      this.clearAutoPlayTimer();
+    } else if (this.currentTutorial && !this.isPlaying) {
+      // 开启自动播放且当前有教程且没在播放时，可以考虑开始自动播放
+      // 但这里不自动开始，等用户手动播放一次后再启动自动模式
+      console.log('自动播放已开启，下次播放完成后将自动进入下一步');
+    }
+    
+    // 保存设置
+    this.saveWidgetSettings();
   }
 
   previousStep() {
     if (!this.currentTutorial || this.currentStepIndex <= 0) return;
 
+    // 手动操作时停止自动播放
+    this.clearAutoPlayTimer();
+    
     this.currentStepIndex--;
     this.updateUI();
+    this.saveCurrentTutorialState();
     this.playCurrentStep();
   }
 
   nextStep() {
     if (!this.currentTutorial || this.currentStepIndex >= this.currentTutorial.steps.length - 1) return;
 
+    // 手动点击下一步时，不清除自动播放（让自动播放继续）
+    // 但如果是最后一步，则停止自动播放
+    if (this.currentStepIndex >= this.currentTutorial.steps.length - 2) {
+      this.clearAutoPlayTimer();
+    }
+    
     this.currentStepIndex++;
     this.updateUI();
+    this.saveCurrentTutorialState();
     this.playCurrentStep();
   }
 
+  // 保存当前教程状态
+  async saveCurrentTutorialState() {
+    if (!this.currentTutorial) return;
+    
+    try {
+      // 从当前教程对象中找到对应的key
+      const tutorialKey = Object.keys(this.tutorials).find(key => 
+        this.tutorials[key] === this.currentTutorial
+      );
+      
+      if (tutorialKey) {
+        await chrome.storage.local.set({ 
+          currentTutorial: tutorialKey,
+          currentStepIndex: this.currentStepIndex 
+        });
+      }
+    } catch (error) {
+      console.log('保存教程状态失败:', error);
+    }
+  }
+
   repeatStep() {
+    // 重复播放时停止自动播放定时器，避免冲突
+    this.clearAutoPlayTimer();
     this.playCurrentStep();
   }
 
@@ -827,7 +1120,7 @@ class ScratchVoiceAssistant {
         autoPlay: this.widget.querySelector('#autoPlaySetting')?.checked || false,
         highlight: this.widget.querySelector('#highlightSetting')?.checked || true,
         language: this.widget.querySelector('#languageSetting')?.value || 'zh-CN',
-        voiceEngine: 'browser',
+        voiceEngine: this.widget.querySelector('#voiceEngineSetting')?.value || 'browser',
         voiceSelect: this.widget.querySelector('#voiceSelectSetting')?.value || '',
         speechRate: parseFloat(this.widget.querySelector('#speechRateSetting')?.value || 1.0),
         speechVolume: parseFloat(this.widget.querySelector('#speechVolumeSetting')?.value || 0.8)
@@ -839,7 +1132,7 @@ class ScratchVoiceAssistant {
       // 更新 TTS 服务设置
       if (this.ttsService) {
         const ttsSettings = {
-          engine: 'browser',
+          engine: settings.voiceEngine,
           language: settings.language,
           voice: settings.voiceSelect,
           speed: settings.speechRate,
@@ -879,6 +1172,28 @@ class ScratchVoiceAssistant {
     this.saveWidgetSettings();
   }
 
+  async onWidgetVoiceEngineChange() {
+    const voiceEngine = this.widget.querySelector('#voiceEngineSetting')?.value || 'browser';
+    await this.loadWidgetVoiceOptions(voiceEngine);
+    this.saveWidgetSettings();
+  }
+
+  async loadWidgetVoiceOptions(voiceEngine) {
+    switch (voiceEngine) {
+      case 'browser':
+        await this.loadWidgetVoices();
+        break;
+      case 'google':
+        this.populateWidgetGoogleVoices();
+        break;
+      case 'baidu':
+        this.populateWidgetBaiduVoices();
+        break;
+      default:
+        await this.loadWidgetVoices();
+    }
+  }
+
   async testWidgetVoice() {
     const testBtn = this.widget.querySelector('#testVoiceBtn');
     if (!testBtn) return;
@@ -890,14 +1205,20 @@ class ScratchVoiceAssistant {
       testBtn.disabled = true;
 
       const settings = {
+        voiceEngine: this.widget.querySelector('#voiceEngineSetting')?.value || 'browser',
         language: this.widget.querySelector('#languageSetting')?.value || 'zh-CN',
         voiceSelect: this.widget.querySelector('#voiceSelectSetting')?.value || '',
         speechRate: parseFloat(this.widget.querySelector('#speechRateSetting')?.value || 1.0),
         speechVolume: parseFloat(this.widget.querySelector('#speechVolumeSetting')?.value || 0.8)
       };
 
-      // 使用浏览器 TTS 测试
-      await this.testVoiceWithBrowser(settings, '这是语音测试，你好！');
+      // 根据语音引擎选择测试方法
+      if (settings.voiceEngine === 'baidu') {
+        await this.testVoiceWithBaidu(settings, '这是百度语音测试，你好！');
+      } else {
+        // 使用浏览器 TTS 测试
+        await this.testVoiceWithBrowser(settings, '这是语音测试，你好！');
+      }
     } catch (error) {
       // 静默处理错误
     } finally {
@@ -963,6 +1284,49 @@ class ScratchVoiceAssistant {
         reject(error);
       }
     });
+  }
+
+  async testVoiceWithBaidu(settings, text) {
+    try {
+      // 通过background service worker获取音频（解决CORS问题）
+      const response = await chrome.runtime.sendMessage({
+        action: 'fetchTTSAudio',
+        engine: 'baidu',
+        text: text,
+        settings: {
+          voice: settings.voiceSelect,
+          speed: settings.speechRate,
+          volume: settings.speechVolume,
+          language: settings.language
+        }
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || '百度TTS 请求失败');
+      }
+
+      const audio = new Audio();
+      audio.volume = settings.speechVolume;
+      
+      return new Promise((resolve, reject) => {
+        audio.onloadstart = () => {
+          resolve();
+        };
+
+        audio.onended = () => {
+          console.log('百度TTS播放完成');
+        };
+
+        audio.onerror = () => {
+          reject(new Error('百度TTS播放失败'));
+        };
+
+        audio.src = response.audioData;
+        audio.play().catch(reject);
+      });
+    } catch (error) {
+      throw new Error(`百度TTS测试失败: ${error.message}`);
+    }
   }
 
   async loadWidgetVoices() {
@@ -1042,6 +1406,66 @@ class ScratchVoiceAssistant {
     this.loadWidgetSettings();
   }
 
+  populateWidgetGoogleVoices() {
+    const voiceSelect = this.widget.querySelector('#voiceSelectSetting');
+    if (!voiceSelect) return;
+
+    voiceSelect.innerHTML = '<option value="">选择语音</option>';
+
+    const googleVoices = [
+      { name: 'Google 中文女声 (标准)', value: 'zh-CN-Standard-A', lang: 'zh-CN' },
+      { name: 'Google 中文男声 (标准)', value: 'zh-CN-Standard-B', lang: 'zh-CN' },
+      { name: 'Google 中文女声2 (标准)', value: 'zh-CN-Standard-C', lang: 'zh-CN' },
+      { name: 'Google 中文男声2 (标准)', value: 'zh-CN-Standard-D', lang: 'zh-CN' },
+      { name: 'Google 中文女声 (神经网络)', value: 'zh-CN-Neural2-A', lang: 'zh-CN' },
+      { name: 'Google 中文男声 (神经网络)', value: 'zh-CN-Neural2-B', lang: 'zh-CN' },
+      { name: 'Google 中文女声2 (神经网络)', value: 'zh-CN-Neural2-C', lang: 'zh-CN' },
+      { name: 'Google 中文男声2 (神经网络)', value: 'zh-CN-Neural2-D', lang: 'zh-CN' }
+    ];
+
+    const chineseGroup = document.createElement('optgroup');
+    chineseGroup.label = '中文语音';
+
+    googleVoices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.value;
+      option.textContent = voice.name;
+      chineseGroup.appendChild(option);
+    });
+
+    voiceSelect.appendChild(chineseGroup);
+  }
+
+  populateWidgetBaiduVoices() {
+    const voiceSelect = this.widget.querySelector('#voiceSelectSetting');
+    if (!voiceSelect) return;
+
+    voiceSelect.innerHTML = '<option value="">选择语音</option>';
+
+    const baiduVoices = [
+      { name: '百度女声 (度小美)', value: 'baidu-0', lang: 'zh-CN' },
+      { name: '百度男声 (度小宇)', value: 'baidu-1', lang: 'zh-CN' },
+      { name: '百度女声 (度小娇)', value: 'baidu-3', lang: 'zh-CN' },
+      { name: '百度男声 (度米朵)', value: 'baidu-4', lang: 'zh-CN' },
+      { name: '百度女声 (度小鹿)', value: 'baidu-103', lang: 'zh-CN' },
+      { name: '百度男声 (度博文)', value: 'baidu-106', lang: 'zh-CN' },
+      { name: '百度女声 (度小童)', value: 'baidu-110', lang: 'zh-CN' },
+      { name: '百度女声 (度小萌)', value: 'baidu-111', lang: 'zh-CN' }
+    ];
+
+    const chineseGroup = document.createElement('optgroup');
+    chineseGroup.label = '百度语音';
+
+    baiduVoices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.value;
+      option.textContent = voice.name;
+      chineseGroup.appendChild(option);
+    });
+
+    voiceSelect.appendChild(chineseGroup);
+  }
+
   async loadWidgetSettings() {
     try {
       const result = await chrome.storage.sync.get(['settings']);
@@ -1049,8 +1473,8 @@ class ScratchVoiceAssistant {
         autoPlay: false,
         highlight: true,
         language: 'zh-CN',
-        voiceEngine: 'browser',
-        voiceSelect: '',
+        voiceEngine: 'baidu',
+        voiceSelect: 'baidu-110', // 度小童
         speechRate: 1.0,
         speechVolume: 0.8
       };
@@ -1058,6 +1482,7 @@ class ScratchVoiceAssistant {
       // 应用设置到浮窗控件
       const autoPlaySetting = this.widget.querySelector('#autoPlaySetting');
       const highlightSetting = this.widget.querySelector('#highlightSetting');
+      const voiceEngineSetting = this.widget.querySelector('#voiceEngineSetting');
       const languageSetting = this.widget.querySelector('#languageSetting');
       const voiceSelectSetting = this.widget.querySelector('#voiceSelectSetting');
       const speechRateSetting = this.widget.querySelector('#speechRateSetting');
@@ -1067,8 +1492,16 @@ class ScratchVoiceAssistant {
 
       if (autoPlaySetting) autoPlaySetting.checked = settings.autoPlay;
       if (highlightSetting) highlightSetting.checked = settings.highlight;
+      if (voiceEngineSetting) voiceEngineSetting.value = settings.voiceEngine;
       if (languageSetting) languageSetting.value = settings.language;
-      if (voiceSelectSetting) voiceSelectSetting.value = settings.voiceSelect;
+      
+      // 根据语音引擎加载相应的语音选项
+      await this.loadWidgetVoiceOptions(settings.voiceEngine);
+      
+      // 确保默认选择度小童
+      if (voiceSelectSetting) {
+        voiceSelectSetting.value = settings.voiceSelect || 'baidu-110';
+      }
       if (speechRateSetting) speechRateSetting.value = settings.speechRate;
       if (speechVolumeSetting) speechVolumeSetting.value = settings.speechVolume;
       if (speechRateValue) speechRateValue.textContent = `${settings.speechRate}x`;
@@ -1078,6 +1511,8 @@ class ScratchVoiceAssistant {
       // 静默处理错误
     }
   }
+
+
 
 
 
@@ -1151,6 +1586,50 @@ class ScratchVoiceAssistant {
     console.log('Content script 消息监听器已设置');
   }
 
+  // 设置存储监听器，用于同步教程选择
+  setupStorageListener() {
+    // 监听存储变化，实现跨组件同步
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local') {
+        // 监听教程选择变化
+        if (changes.currentTutorial) {
+          const newTutorialKey = changes.currentTutorial.newValue;
+          const newStepIndex = changes.currentStepIndex?.newValue || 0;
+          
+          console.log('检测到教程选择变化:', newTutorialKey, '步骤:', newStepIndex);
+          
+          // 只有当选择的教程与当前不同时才更新
+          const currentTutorialKey = Object.keys(this.tutorials || {}).find(key => 
+            this.tutorials[key] === this.currentTutorial
+          );
+          
+          if (newTutorialKey !== currentTutorialKey) {
+            // 更新浮窗的下拉选择（不触发事件）
+            const tutorialSelect = this.widget?.querySelector('#tutorialSelect');
+            if (tutorialSelect && newTutorialKey) {
+              tutorialSelect.value = newTutorialKey;
+              console.log('从存储同步教程选择到浮窗:', newTutorialKey);
+              
+              // 更新当前教程状态
+              if (this.tutorials[newTutorialKey]) {
+                this.currentTutorial = this.tutorials[newTutorialKey];
+                this.currentStepIndex = newStepIndex;
+                this.updateUI();
+              }
+            } else if (tutorialSelect && !newTutorialKey) {
+              tutorialSelect.value = '';
+              this.currentTutorial = null;
+              this.currentStepIndex = 0;
+              this.updateUI();
+            }
+          }
+        }
+      }
+    });
+    
+    console.log('存储监听器已设置');
+  }
+
   // 切换浮窗显示/隐藏
   toggleWidgetVisibility() {
     if (!this.widget) {
@@ -1165,10 +1644,11 @@ class ScratchVoiceAssistant {
   }
 
   // 更新设置
-  updateSettings(settings) {
+  async updateSettings(settings) {
     // 更新浮窗面板的设置控件
     const autoPlaySetting = this.widget.querySelector('#autoPlaySetting');
     const highlightSetting = this.widget.querySelector('#highlightSetting');
+    const voiceEngineSetting = this.widget.querySelector('#voiceEngineSetting');
     const languageSetting = this.widget.querySelector('#languageSetting');
     const voiceSelectSetting = this.widget.querySelector('#voiceSelectSetting');
     const speechRateSetting = this.widget.querySelector('#speechRateSetting');
@@ -1182,6 +1662,12 @@ class ScratchVoiceAssistant {
 
     if (highlightSetting && settings.highlight !== undefined) {
       highlightSetting.checked = settings.highlight;
+    }
+
+    if (voiceEngineSetting && settings.voiceEngine) {
+      voiceEngineSetting.value = settings.voiceEngine;
+      // 当语音引擎改变时，重新加载语音选项
+      await this.loadWidgetVoiceOptions(settings.voiceEngine);
     }
 
     if (languageSetting && settings.language) {
@@ -1209,7 +1695,7 @@ class ScratchVoiceAssistant {
     // 更新 TTS 服务设置
     if (this.ttsService) {
       const ttsSettings = {
-        engine: 'browser',
+        engine: settings.voiceEngine || 'browser',
         language: settings.language || 'zh-CN',
         voice: settings.voiceSelect || '',
         speed: settings.speechRate || 1.0,
@@ -1325,6 +1811,138 @@ class ScratchVoiceAssistant {
         reject(error);
       }
     });
+  }
+
+  // 初始化拖动功能
+  initDragFunctionality() {
+    const header = this.widget.querySelector('.widget-header');
+    
+    if (!header) {
+      console.log('未找到拖动手柄');
+      return;
+    }
+
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let widgetStartX = 0;
+    let widgetStartY = 0;
+
+    console.log('初始化拖动功能...');
+
+    // 先加载保存的位置
+    setTimeout(() => this.loadWidgetPosition(), 100);
+
+    header.addEventListener('mousedown', (e) => {
+      // 防止在点击按钮时触发拖动
+      if (e.target.closest('button')) return;
+      
+      console.log('鼠标按下，准备拖动');
+      
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      
+      // 获取当前浮窗的位置
+      const rect = this.widget.getBoundingClientRect();
+      widgetStartX = rect.left;
+      widgetStartY = rect.top;
+      
+      header.classList.add('dragging');
+      this.widget.classList.add('dragging');
+      
+      // 禁用过渡动画
+      this.widget.style.transition = 'none';
+      
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const deltaX = e.clientX - dragStartX;
+      const deltaY = e.clientY - dragStartY;
+      
+      let newX = widgetStartX + deltaX;
+      let newY = widgetStartY + deltaY;
+      
+      // 限制拖动范围，确保不会拖出屏幕
+      const widgetWidth = this.widget.offsetWidth;
+      const widgetHeight = this.widget.offsetHeight;
+      const maxX = window.innerWidth - widgetWidth;
+      const maxY = window.innerHeight - widgetHeight;
+      
+      newX = Math.max(0, Math.min(newX, maxX));
+      newY = Math.max(0, Math.min(newY, maxY));
+      
+      // 设置新位置
+      this.widget.style.left = `${newX}px`;
+      this.widget.style.top = `${newY}px`;
+      this.widget.style.right = 'auto';
+      this.widget.style.bottom = 'auto';
+      
+      e.preventDefault();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        console.log('拖动结束');
+        isDragging = false;
+        header.classList.remove('dragging');
+        this.widget.classList.remove('dragging');
+        
+        // 恢复过渡动画
+        this.widget.style.transition = '';
+        
+        // 保存位置
+        this.saveWidgetPosition();
+      }
+    });
+  }
+
+  // 保存浮窗位置
+  async saveWidgetPosition() {
+    try {
+      const rect = this.widget.getBoundingClientRect();
+      const position = {
+        left: rect.left,
+        top: rect.top,
+        timestamp: Date.now()
+      };
+      
+      await chrome.storage.local.set({ widgetPosition: position });
+    } catch (error) {
+      // 静默处理错误
+    }
+  }
+
+  // 加载浮窗位置
+  async loadWidgetPosition() {
+    try {
+      const result = await chrome.storage.local.get(['widgetPosition']);
+      const position = result.widgetPosition;
+      
+      if (position) {
+        // 检查位置是否仍然有效（防止屏幕尺寸变化导致的问题）
+        const maxX = window.innerWidth - 280; // 最小宽度
+        const maxY = window.innerHeight - 200; // 最小高度
+        
+        if (position.left >= 0 && position.left <= maxX && 
+            position.top >= 0 && position.top <= maxY) {
+          this.widget.style.left = `${position.left}px`;
+          this.widget.style.top = `${position.top}px`;
+          this.widget.style.right = 'auto';
+          this.widget.style.bottom = 'auto';
+          this.widget.style.transform = `translate(0px, 0px)`;
+          
+          console.log('恢复浮窗位置:', position);
+        }
+      }
+    } catch (error) {
+      // 静默处理错误，使用默认位置
+      console.log('加载位置失败，使用默认位置');
+    }
   }
 
   // Icons8 图标生成器

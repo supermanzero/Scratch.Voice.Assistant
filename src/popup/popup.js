@@ -228,13 +228,16 @@ class PopupManager {
     // 设置变更事件
     const autoPlaySetting = document.getElementById('autoPlaySetting');
     const highlightSetting = document.getElementById('highlightSetting');
+    const voiceEngineSetting = document.getElementById('voiceEngineSetting');
     const languageSetting = document.getElementById('languageSetting');
     const voiceSelectSetting = document.getElementById('voiceSelectSetting');
     const speechRateSetting = document.getElementById('speechRateSetting');
     const speechVolumeSetting = document.getElementById('speechVolumeSetting');
     const testVoiceBtn = document.getElementById('testVoiceBtn');
+    
     autoPlaySetting.addEventListener('change', () => this.saveSettings());
     highlightSetting.addEventListener('change', () => this.saveSettings());
+    voiceEngineSetting.addEventListener('change', () => this.onVoiceEngineChange());
     languageSetting.addEventListener('change', () => this.saveSettings());
     voiceSelectSetting.addEventListener('change', () => this.saveSettings());
     speechRateSetting.addEventListener('input', () => this.onSpeechRateChange());
@@ -341,6 +344,12 @@ class PopupManager {
       const tutorials = ['motion', 'looks', 'events'];
       const tutorialId = tutorials[index];
 
+      // 保存教程选择到存储，用于同步
+      await chrome.storage.local.set({ 
+        currentTutorial: tutorialId,
+        currentStepIndex: 0 
+      });
+
       await chrome.tabs.sendMessage(this.currentTab.id, {
         action: 'selectTutorial',
         tutorialId: tutorialId
@@ -360,14 +369,15 @@ class PopupManager {
         autoPlay: false,
         highlight: true,
         language: 'zh-CN',
-        voiceEngine: 'browser',
-        voiceSelect: '',
+        voiceEngine: 'baidu',
+        voiceSelect: 'baidu-110', // 度小童
         speechRate: 1.0,
         speechVolume: 0.8
       };
 
       document.getElementById('autoPlaySetting').checked = settings.autoPlay;
       document.getElementById('highlightSetting').checked = settings.highlight;
+      document.getElementById('voiceEngineSetting').value = settings.voiceEngine;
       document.getElementById('languageSetting').value = settings.language;
       document.getElementById('speechRateSetting').value = settings.speechRate;
       document.getElementById('speechVolumeSetting').value = settings.speechVolume;
@@ -376,17 +386,17 @@ class PopupManager {
       document.getElementById('speechRateValue').textContent = settings.speechRate + 'x';
       document.getElementById('speechVolumeValue').textContent = Math.round(settings.speechVolume * 100) + '%';
 
-      // 加载浏览器语音选项
-      await this.loadBrowserVoices();
+      // 根据语音引擎加载语音选项
+      await this.loadVoiceOptions(settings.voiceEngine);
 
-      // 设置选中的语音
-      if (settings.voiceSelect) {
-        document.getElementById('voiceSelectSetting').value = settings.voiceSelect;
-      }
+      // 设置选中的语音，默认为度小童
+      document.getElementById('voiceSelectSetting').value = settings.voiceSelect || 'baidu-110';
     } catch (error) {
       // 静默处理错误
     }
   }
+
+
 
   async saveSettings() {
     try {
@@ -394,7 +404,7 @@ class PopupManager {
         autoPlay: document.getElementById('autoPlaySetting').checked,
         highlight: document.getElementById('highlightSetting').checked,
         language: document.getElementById('languageSetting').value,
-        voiceEngine: 'browser',
+        voiceEngine: document.getElementById('voiceEngineSetting').value,
         voiceSelect: document.getElementById('voiceSelectSetting').value,
         speechRate: parseFloat(document.getElementById('speechRateSetting').value),
         speechVolume: parseFloat(document.getElementById('speechVolumeSetting').value)
@@ -539,6 +549,28 @@ class PopupManager {
     }
   }
 
+  async onVoiceEngineChange() {
+    const voiceEngine = document.getElementById('voiceEngineSetting').value;
+    await this.loadVoiceOptions(voiceEngine);
+    this.saveSettings();
+  }
+
+  async loadVoiceOptions(voiceEngine) {
+    switch (voiceEngine) {
+      case 'browser':
+        await this.loadBrowserVoices();
+        break;
+      case 'google':
+        this.populateGoogleVoices();
+        break;
+      case 'baidu':
+        this.populateBaiduVoices();
+        break;
+      default:
+        await this.loadBrowserVoices();
+    }
+  }
+
   async loadBrowserVoices() {
     const voiceSelect = document.getElementById('voiceSelectSetting');
     voiceSelect.innerHTML = '<option value="">加载中...</option>';
@@ -627,6 +659,34 @@ class PopupManager {
     voiceSelect.appendChild(chineseGroup);
   }
 
+  populateBaiduVoices() {
+    const voiceSelect = document.getElementById('voiceSelectSetting');
+    voiceSelect.innerHTML = '<option value="">选择语音</option>';
+
+    const baiduVoices = [
+      { name: '百度女声 (度小美)', value: 'baidu-0', lang: 'zh-CN' },
+      { name: '百度男声 (度小宇)', value: 'baidu-1', lang: 'zh-CN' },
+      { name: '百度女声 (度小娇)', value: 'baidu-3', lang: 'zh-CN' },
+      { name: '百度男声 (度米朵)', value: 'baidu-4', lang: 'zh-CN' },
+      { name: '百度女声 (度小鹿)', value: 'baidu-103', lang: 'zh-CN' },
+      { name: '百度男声 (度博文)', value: 'baidu-106', lang: 'zh-CN' },
+      { name: '百度女声 (度小童)', value: 'baidu-110', lang: 'zh-CN' },
+      { name: '百度女声 (度小萌)', value: 'baidu-111', lang: 'zh-CN' }
+    ];
+
+    const chineseGroup = document.createElement('optgroup');
+    chineseGroup.label = '百度语音';
+
+    baiduVoices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.value;
+      option.textContent = voice.name;
+      chineseGroup.appendChild(option);
+    });
+
+    voiceSelect.appendChild(chineseGroup);
+  }
+
   onSpeechRateChange() {
     const rate = document.getElementById('speechRateSetting').value;
     document.getElementById('speechRateValue').textContent = rate + 'x';
@@ -648,7 +708,7 @@ class PopupManager {
       testBtn.disabled = true;
 
       const settings = {
-        voiceEngine: 'browser',
+        voiceEngine: document.getElementById('voiceEngineSetting').value,
         voiceSelect: document.getElementById('voiceSelectSetting').value,
         language: document.getElementById('languageSetting').value,
         speechRate: parseFloat(document.getElementById('speechRateSetting').value),
@@ -731,14 +791,61 @@ class PopupManager {
           } else {
             setupAndSpeak();
           }
+        } else if (settings.voiceEngine === 'baidu') {
+          this.testBaiduVoice(settings, '这是百度语音测试，你好！')
+            .then(resolve)
+            .catch(reject);
         } else {
-          alert('Google 语音测试需要在 Scratch 编辑器页面中进行');
+          alert('Google 和百度语音测试需要在 Scratch 编辑器页面中进行');
           resolve();
         }
       } catch (error) {
         reject(error);
       }
     });
+  }
+
+  async testBaiduVoice(settings, text) {
+    try {
+      // 通过background service worker获取音频（解决CORS问题）
+      const response = await chrome.runtime.sendMessage({
+        action: 'fetchTTSAudio',
+        engine: 'baidu',
+        text: text,
+        settings: {
+          voice: settings.voiceSelect,
+          speed: settings.speechRate,
+          volume: settings.speechVolume,
+          language: settings.language
+        }
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || '百度TTS 请求失败');
+      }
+
+      const audio = new Audio();
+      audio.volume = settings.speechVolume;
+      
+      return new Promise((resolve, reject) => {
+        audio.onloadstart = () => {
+          resolve();
+        };
+
+        audio.onended = () => {
+          console.log('百度TTS播放完成');
+        };
+
+        audio.onerror = () => {
+          reject(new Error('百度TTS播放失败'));
+        };
+
+        audio.src = response.audioData;
+        audio.play().catch(reject);
+      });
+    } catch (error) {
+      throw new Error(`百度TTS测试失败: ${error.message}`);
+    }
   }
 
 

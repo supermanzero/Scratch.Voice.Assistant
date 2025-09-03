@@ -12,7 +12,10 @@
   
   "host_permissions": [
     "https://scratch.mit.edu/*",
-    "https://machinelearningforkids.co.uk/*"
+    "https://machinelearningforkids.co.uk/*",
+    "https://tsn.baidu.com/*",
+    "https://aip.baidubce.com/*",
+    "https://translate.google.com/*"
   ],
   
   "content_scripts": [

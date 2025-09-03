@@ -445,3 +445,8 @@ body {
 .popup-main::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
 }
+
+/* 通用样式 */
+.hidden {
+  display: none !important;
+}
