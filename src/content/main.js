@@ -16,10 +16,47 @@ class ScratchVoiceAssistant {
     this.preloadedAudio = null;
     this.preloadedText = null;
     this.isPreloading = false;
+    // 检测操作系统
+    this.isWindows = this.detectWindowsOS();
 
     this.init();
     this.setupMessageListener();
     this.setupStorageListener();
+  }
+
+  // 检测是否为Windows操作系统
+  detectWindowsOS() {
+    try {
+      // 方法1: 通过navigator.platform检测
+      const platform = navigator.platform.toLowerCase();
+      if (platform.includes('win')) {
+        console.log('检测到Windows系统 (navigator.platform):', platform);
+        return true;
+      }
+
+      // 方法2: 通过navigator.userAgent检测
+      const userAgent = navigator.userAgent.toLowerCase();
+      if (userAgent.includes('windows')) {
+        console.log('检测到Windows系统 (userAgent):', userAgent);
+        return true;
+      }
+
+      // 方法3: 通过navigator.oscpu检测（Firefox）
+      if (navigator.oscpu && navigator.oscpu.toLowerCase().includes('windows')) {
+        console.log('检测到Windows系统 (oscpu):', navigator.oscpu);
+        return true;
+      }
+
+      console.log('检测到非Windows系统，平台信息:', {
+        platform: navigator.platform,
+        userAgent: navigator.userAgent,
+        oscpu: navigator.oscpu
+      });
+      return false;
+    } catch (error) {
+      console.warn('操作系统检测失败，默认使用Windows模式:', error);
+      return true; // 默认使用Windows模式
+    }
   }
 
   async init() {
@@ -36,6 +73,12 @@ class ScratchVoiceAssistant {
     }
 
     this.isInitialized = true;
+    
+    // 输出操作系统检测结果
+    console.log('=== 操作系统检测结果 ===');
+    console.log('检测到的系统类型:', this.isWindows ? 'Windows' : '非Windows (Mac/Linux等)');
+    console.log('是否添加"嗯"前缀:', this.isWindows ? '是' : '否');
+    console.log('========================');
   }
 
   // 加载 TTS 服务 - 简化版本
@@ -1110,7 +1153,17 @@ class ScratchVoiceAssistant {
     }
 
     const step = this.currentTutorial.steps[this.currentStepIndex];
-    this.speak('嗯' + step.text);
+    
+    // 根据操作系统决定是否添加"嗯"前缀
+    let textToSpeak = step.text;
+    if (this.isWindows) {
+      textToSpeak = '嗯' + step.text;
+      console.log('Windows系统，添加"嗯"前缀');
+    } else {
+      console.log('非Windows系统，不添加"嗯"前缀');
+    }
+    
+    this.speak(textToSpeak);
   }
 
   async speak(text) {
@@ -1314,17 +1367,23 @@ class ScratchVoiceAssistant {
     }
 
     try {
-      console.log('开始预加载下一步音频:', nextStep.text.substring(0, 20) + '...');
+      // 根据操作系统决定预加载的文本内容
+      let textToPreload = nextStep.text;
+      if (this.isWindows) {
+        textToPreload = '嗯' + nextStep.text;
+      }
+      
+      console.log('开始预加载下一步音频:', textToPreload.substring(0, 20) + '...');
       
       // 清除之前的预加载音频
       this.ttsService.clearPreloadedAudio();
       
       // 预加载下一步的音频
-      const preloadedAudio = await this.ttsService.preloadAudio(nextStep.text);
+      const preloadedAudio = await this.ttsService.preloadAudio(textToPreload);
       
       if (preloadedAudio) {
         this.ttsService.preloadedAudio = preloadedAudio;
-        this.ttsService.preloadedText = nextStep.text;
+        this.ttsService.preloadedText = textToPreload; // 保存完整的文本（包含"嗯"前缀）
         console.log('下一步音频预加载成功');
       }
     } catch (error) {
