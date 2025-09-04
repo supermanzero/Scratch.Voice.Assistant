@@ -12,6 +12,10 @@ class ScratchVoiceAssistant {
     this.autoPlayTimer = null;
     this.countdownTimer = null;
     this.isAutoPlaying = false;
+    // 添加音频预加载相关属性
+    this.preloadedAudio = null;
+    this.preloadedText = null;
+    this.isPreloading = false;
 
     this.init();
     this.setupMessageListener();
@@ -81,15 +85,255 @@ class ScratchVoiceAssistant {
       currentAudio: null,
       currentUtterance: null,
       isPlaying: false,
+      // 添加预加载相关属性
+      preloadedAudio: null,
+      preloadedText: null,
+      isPreloading: false,
 
       updateSettings(newSettings) {
         this.settings = { ...this.settings, ...newSettings };
+      },
+
+      // 添加预加载音频的方法
+      async preloadAudio(text) {
+        if (this.isPreloading || !text) {
+          return null;
+        }
+
+        this.isPreloading = true;
+        console.log('开始预加载音频:', text.substring(0, 20) + '...');
+
+        try {
+          if (this.settings.engine === 'baidu') {
+            return await this.preloadBaiduAudio(text);
+          } else if (this.settings.engine === 'google' || this.settings.engine === 'google-cloud') {
+            return await this.preloadGoogleAudio(text);
+          } else {
+            // 浏览器TTS不需要预加载
+            return null;
+          }
+        } catch (error) {
+          console.warn('音频预加载失败:', error);
+          return null;
+        } finally {
+          this.isPreloading = false;
+        }
+      },
+
+      // 预加载百度TTS音频
+      async preloadBaiduAudio(text) {
+        try {
+          const response = await chrome.runtime.sendMessage({
+            action: 'fetchTTSAudio',
+            engine: 'baidu',
+            text: text,
+            settings: this.settings
+          });
+
+          if (!response.success) {
+            throw new Error(response.error || '百度TTS 预加载失败');
+          }
+
+          // 创建预加载的音频对象
+          const preloadedAudio = new Audio();
+          preloadedAudio.volume = this.settings.volume;
+          preloadedAudio.preload = 'auto';
+          preloadedAudio.src = response.audioData;
+
+          // 等待音频完全加载完成
+          await new Promise((resolve, reject) => {
+            let isResolved = false;
+            
+            const resolveOnce = () => {
+              if (!isResolved) {
+                isResolved = true;
+                console.log('百度TTS音频预加载完成，readyState:', preloadedAudio.readyState);
+                resolve();
+              }
+            };
+
+            // 使用多个事件确保音频完全准备好
+            preloadedAudio.oncanplaythrough = resolveOnce;
+            preloadedAudio.onloadeddata = () => {
+              // 额外等待一小段时间确保音频完全缓冲
+              setTimeout(() => {
+                if (preloadedAudio.readyState >= 4) { // HAVE_ENOUGH_DATA
+                  resolveOnce();
+                }
+              }, 500);
+            };
+            
+            preloadedAudio.onerror = (error) => {
+              if (!isResolved) {
+                isResolved = true;
+                console.warn('百度TTS音频预加载失败:', error);
+                reject(error);
+              }
+            };
+            
+            // 设置超时
+            setTimeout(() => {
+              if (!isResolved && preloadedAudio.readyState >= 3) { // HAVE_FUTURE_DATA
+                console.log('百度TTS音频预加载超时但可用，readyState:', preloadedAudio.readyState);
+                resolveOnce();
+              } else if (!isResolved) {
+                isResolved = true;
+                reject(new Error('预加载超时'));
+              }
+            }, 8000); // 增加超时时间
+          });
+
+          return preloadedAudio;
+        } catch (error) {
+          throw error;
+        }
+      },
+
+      // 预加载Google TTS音频
+      async preloadGoogleAudio(text) {
+        try {
+          const response = await chrome.runtime.sendMessage({
+            action: 'fetchTTSAudio',
+            engine: 'google',
+            text: text,
+            settings: this.settings
+          });
+
+          if (!response.success) {
+            throw new Error(response.error || 'Google TTS 预加载失败');
+          }
+
+          // 创建预加载的音频对象
+          const preloadedAudio = new Audio();
+          preloadedAudio.volume = this.settings.volume;
+          preloadedAudio.playbackRate = this.settings.speed;
+          preloadedAudio.preload = 'auto';
+          preloadedAudio.src = response.audioData;
+
+          // 等待音频完全加载完成
+          await new Promise((resolve, reject) => {
+            let isResolved = false;
+            
+            const resolveOnce = () => {
+              if (!isResolved) {
+                isResolved = true;
+                console.log('Google TTS音频预加载完成，readyState:', preloadedAudio.readyState);
+                resolve();
+              }
+            };
+
+            // 使用多个事件确保音频完全准备好
+            preloadedAudio.oncanplaythrough = resolveOnce;
+            preloadedAudio.onloadeddata = () => {
+              // 额外等待一小段时间确保音频完全缓冲
+              setTimeout(() => {
+                if (preloadedAudio.readyState >= 4) { // HAVE_ENOUGH_DATA
+                  resolveOnce();
+                }
+              }, 100);
+            };
+            
+            preloadedAudio.onerror = (error) => {
+              if (!isResolved) {
+                isResolved = true;
+                console.warn('Google TTS音频预加载失败:', error);
+                reject(error);
+              }
+            };
+            
+            // 设置超时
+            setTimeout(() => {
+              if (!isResolved && preloadedAudio.readyState >= 3) { // HAVE_FUTURE_DATA
+                console.log('Google TTS音频预加载超时但可用，readyState:', preloadedAudio.readyState);
+                resolveOnce();
+              } else if (!isResolved) {
+                isResolved = true;
+                reject(new Error('预加载超时'));
+              }
+            }, 8000); // 增加超时时间
+          });
+
+          return preloadedAudio;
+        } catch (error) {
+          throw error;
+        }
+      },
+
+      // 使用预加载的音频播放
+      async playPreloadedAudio(preloadedAudio, onStart, onEnd, onError) {
+        if (!preloadedAudio) {
+          throw new Error('没有预加载的音频');
+        }
+
+        try {
+          // 停止当前播放
+          this.stop();
+
+          this.currentAudio = preloadedAudio;
+          this.currentAudio.currentTime = 0; // 重置播放位置
+
+          // 确保音频完全准备好再开始播放
+          if (this.currentAudio.readyState < 4) { // HAVE_ENOUGH_DATA
+            console.log('等待预加载音频完全准备好，当前readyState:', this.currentAudio.readyState);
+            await new Promise((resolve) => {
+              const checkReady = () => {
+                if (this.currentAudio.readyState >= 4) {
+                  resolve();
+                } else {
+                  setTimeout(checkReady, 50);
+                }
+              };
+              checkReady();
+            });
+          }
+
+          // 使用更准确的事件监听 - 改为 onplay
+          this.currentAudio.onplay = () => {
+            this.isPlaying = true;
+            if (onStart) onStart();
+          };
+
+          this.currentAudio.onended = () => {
+            this.isPlaying = false;
+            if (onEnd) onEnd();
+          };
+
+          this.currentAudio.onerror = (error) => {
+            this.isPlaying = false;
+            if (onError) onError(error);
+          };
+
+          // 添加一个小的延迟确保音频完全准备好
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          await this.currentAudio.play();
+        } catch (error) {
+          this.isPlaying = false;
+          if (onError) onError(error);
+          throw error;
+        }
       },
 
       async speak(text, onStart, onEnd, onError) {
         try {
           // 停止当前播放
           this.stop();
+
+          // 检查是否有预加载的音频可以使用
+          if (this.preloadedAudio && this.preloadedText === text) {
+            console.log('使用预加载的音频播放');
+            await this.playPreloadedAudio(this.preloadedAudio, onStart, onEnd, onError);
+            // 清除预加载的音频
+            this.preloadedAudio = null;
+            this.preloadedText = null;
+            return;
+          }
+
+          // 清除之前的预加载音频
+          if (this.preloadedAudio) {
+            this.preloadedAudio = null;
+            this.preloadedText = null;
+          }
 
           if (this.settings.engine === 'google' || this.settings.engine === 'google-cloud') {
             // 尝试 Google TTS
@@ -206,7 +450,8 @@ class ScratchVoiceAssistant {
           this.currentAudio.volume = this.settings.volume;
           this.currentAudio.playbackRate = this.settings.speed;
 
-          this.currentAudio.onloadstart = () => {
+          // 使用更准确的事件监听
+          this.currentAudio.onplay = () => {
             this.isPlaying = true;
             if (onStart) onStart();
           };
@@ -218,10 +463,27 @@ class ScratchVoiceAssistant {
 
           this.currentAudio.onerror = (error) => {
             this.isPlaying = false;
-            throw new Error('Google TTS 播放失败');
+            if (onError) onError(error);
           };
 
           this.currentAudio.src = response.audioData;
+          
+          // 等待音频加载完成再播放
+          await new Promise((resolve, reject) => {
+            this.currentAudio.oncanplaythrough = () => {
+              resolve();
+            };
+            this.currentAudio.onerror = reject;
+            // 设置超时
+            setTimeout(() => {
+              if (this.currentAudio.readyState >= 3) {
+                resolve();
+              } else {
+                reject(new Error('音频加载超时'));
+              }
+            }, 5000);
+          });
+          
           await this.currentAudio.play();
         } catch (error) {
           throw error;
@@ -246,7 +508,8 @@ class ScratchVoiceAssistant {
           this.currentAudio = new Audio();
           this.currentAudio.volume = this.settings.volume;
 
-          this.currentAudio.onloadstart = () => {
+          // 使用更准确的事件监听
+          this.currentAudio.onplay = () => {
             this.isPlaying = true;
             if (onStart) onStart();
           };
@@ -258,10 +521,27 @@ class ScratchVoiceAssistant {
 
           this.currentAudio.onerror = (error) => {
             this.isPlaying = false;
-            throw new Error('百度TTS播放失败，可能需要API密钥');
+            if (onError) onError(error);
           };
 
           this.currentAudio.src = response.audioData;
+          
+          // 等待音频加载完成再播放
+          await new Promise((resolve, reject) => {
+            this.currentAudio.oncanplaythrough = () => {
+              resolve();
+            };
+            this.currentAudio.onerror = reject;
+            // 设置超时
+            setTimeout(() => {
+              if (this.currentAudio.readyState >= 3) {
+                resolve();
+              } else {
+                reject(new Error('音频加载超时'));
+              }
+            }, 5000);
+          });
+          
           await this.currentAudio.play();
         } catch (error) {
           throw error;
@@ -271,7 +551,7 @@ class ScratchVoiceAssistant {
       stop() {
         this.isPlaying = false;
 
-        // 停止 Google TTS 音频
+        // 停止当前音频
         if (this.currentAudio) {
           this.currentAudio.pause();
           this.currentAudio.currentTime = 0;
@@ -288,11 +568,20 @@ class ScratchVoiceAssistant {
         }
       },
 
+      // 清除预加载的音频
+      clearPreloadedAudio() {
+        if (this.preloadedAudio) {
+          this.preloadedAudio = null;
+          this.preloadedText = null;
+        }
+      },
+
       getStatus() {
         return {
           isPlaying: this.isPlaying,
           engine: this.settings.engine,
-          settings: this.settings
+          settings: this.settings,
+          hasPreloadedAudio: !!this.preloadedAudio
         };
       }
     };
@@ -821,7 +1110,7 @@ class ScratchVoiceAssistant {
     }
 
     const step = this.currentTutorial.steps[this.currentStepIndex];
-    this.speak(step.text);
+    this.speak('嗯' + step.text);
   }
 
   async speak(text) {
@@ -988,6 +1277,9 @@ class ScratchVoiceAssistant {
     let countdown = 5;
     this.updatePlayButton(countdown);
     
+    // 在倒计时开始时预加载下一步的音频
+    this.preloadNextStepAudio();
+    
     const countdownTimer = setInterval(() => {
       countdown--;
       if (countdown > 0 && this.isAutoPlaying) {
@@ -1005,6 +1297,41 @@ class ScratchVoiceAssistant {
     this.countdownTimer = countdownTimer;
   }
 
+  // 预加载下一步的音频
+  async preloadNextStepAudio() {
+    if (!this.currentTutorial || !this.ttsService) {
+      return;
+    }
+
+    const nextStepIndex = this.currentStepIndex + 1;
+    if (nextStepIndex >= this.currentTutorial.steps.length) {
+      return; // 没有下一步了
+    }
+
+    const nextStep = this.currentTutorial.steps[nextStepIndex];
+    if (!nextStep || !nextStep.text) {
+      return;
+    }
+
+    try {
+      console.log('开始预加载下一步音频:', nextStep.text.substring(0, 20) + '...');
+      
+      // 清除之前的预加载音频
+      this.ttsService.clearPreloadedAudio();
+      
+      // 预加载下一步的音频
+      const preloadedAudio = await this.ttsService.preloadAudio(nextStep.text);
+      
+      if (preloadedAudio) {
+        this.ttsService.preloadedAudio = preloadedAudio;
+        this.ttsService.preloadedText = nextStep.text;
+        console.log('下一步音频预加载成功');
+      }
+    } catch (error) {
+      console.warn('预加载下一步音频失败:', error);
+    }
+  }
+
   // 清除自动播放定时器
   clearAutoPlayTimer() {
     if (this.autoPlayTimer) {
@@ -1019,6 +1346,11 @@ class ScratchVoiceAssistant {
     }
     
     this.isAutoPlaying = false;
+    
+    // 清除预加载的音频
+    if (this.ttsService) {
+      this.ttsService.clearPreloadedAudio();
+    }
     
     // 恢复按钮正常状态
     this.updatePlayButton();
@@ -1068,7 +1400,16 @@ class ScratchVoiceAssistant {
     this.currentStepIndex++;
     this.updateUI();
     this.saveCurrentTutorialState();
+    
+    // 播放当前步骤（如果有预加载的音频会自动使用）
     this.playCurrentStep();
+    
+    // 预加载下一步的音频（如果还有下一步）
+    if (this.currentStepIndex < this.currentTutorial.steps.length - 1) {
+      setTimeout(() => {
+        this.preloadNextStepAudio();
+      }, 1000); // 延迟1秒预加载，避免影响当前播放
+    }
   }
 
   // 保存当前教程状态
