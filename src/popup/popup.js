@@ -10,10 +10,11 @@ class PopupManager {
     // 获取当前标签页信息
     await this.getCurrentTab();
 
-
-
     // 检查连接状态
     this.checkConnectionStatus();
+
+    // 从Firebase加载教程信息
+    await this.loadTutorialsFromFirebase();
 
     // 加载教程进度
     this.loadTutorialProgress();
@@ -84,7 +85,7 @@ class PopupManager {
           const response = await Promise.race([
             chrome.tabs.sendMessage(this.currentTab.id, { action: 'ping' }),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('消息超时')), 2000)
+              setTimeout(() => reject(new Error('消息超时')), 3000)
             )
           ]);
 
@@ -112,18 +113,27 @@ class PopupManager {
             // 等待注入完成后重新检查
             setTimeout(async () => {
               try {
-                const retryResponse = await chrome.tabs.sendMessage(this.currentTab.id, { action: 'ping' });
+                const retryResponse = await Promise.race([
+                  chrome.tabs.sendMessage(this.currentTab.id, { action: 'ping' }),
+                  new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('重试超时')), 3000)
+                  )
+                ]);
+                
                 if (retryResponse && retryResponse.status === 'connected') {
                   statusElement.textContent = '已连接';
                   statusElement.style.color = 'hsl(var(--success))';
                   console.log('注入后连接成功');
+                } else {
+                  statusElement.textContent = '注入后仍无法连接';
+                  statusElement.style.color = 'hsl(var(--destructive))';
                 }
               } catch (retryError) {
                 console.log('注入后仍无法连接:', retryError);
                 statusElement.textContent = '需要刷新页面';
                 statusElement.style.color = 'hsl(var(--destructive))';
               }
-            }, 1500);
+            }, 2500);
           } catch (injectError) {
             console.error('注入content script失败:', injectError);
             statusElement.textContent = '注入失败';
@@ -148,6 +158,14 @@ class PopupManager {
         return;
       }
 
+      console.log('开始注入Content Script到标签页:', this.currentTab.id);
+
+      // 按顺序注入脚本文件（Firebase配置必须在main.js之前）
+      await chrome.scripting.executeScript({
+        target: { tabId: this.currentTab.id },
+        files: ['src/firebase/config.js']
+      });
+
       await chrome.scripting.executeScript({
         target: { tabId: this.currentTab.id },
         files: ['src/content/main.js']
@@ -158,12 +176,157 @@ class PopupManager {
         files: ['assets/css/content.css']
       });
 
-      // 等待一下再检查连接
-      setTimeout(() => this.checkConnectionStatus(), 1000);
+      console.log('Content Script注入完成，等待初始化...');
+
+      // 等待更长时间让脚本完全初始化
+      setTimeout(async () => {
+        console.log('检查注入后的连接状态...');
+        
+        // 先检查脚本是否已注入
+        try {
+          const checkResult = await chrome.scripting.executeScript({
+            target: { tabId: this.currentTab.id },
+            func: () => {
+              return {
+                hasAssistant: !!window.scratchVoiceAssistant,
+                messageListenerReady: window.scratchVoiceAssistant?.messageListenerReady || false,
+                isInitialized: window.scratchVoiceAssistant?.isInitialized || false,
+                readyState: document.readyState,
+                url: window.location.href,
+                timestamp: Date.now()
+              };
+            }
+          });
+          
+          if (checkResult && checkResult[0]) {
+            console.log('脚本注入检查结果:', checkResult[0].result);
+          }
+        } catch (checkError) {
+          console.error('脚本注入检查失败:', checkError);
+        }
+        
+        // 然后检查连接状态
+        this.checkConnectionStatus();
+      }, 5000); // 增加等待时间到5秒
 
     } catch (error) {
-      // 静默处理注入失败
+      console.error('注入Content Script失败:', error);
+      throw error;
     }
+  }
+
+  // 从Firebase加载教程信息
+  async loadTutorialsFromFirebase() {
+    const tutorialList = document.getElementById('tutorialList');
+    
+    try {
+      // 显示加载状态
+      tutorialList.innerHTML = `
+        <div class="loading-tutorials">
+          <div class="loading-spinner"></div>
+          <p>正在从Firebase加载教程...</p>
+        </div>
+      `;
+
+      // 通过background script获取教程数据
+      const response = await chrome.runtime.sendMessage({
+        action: 'getTutorials'
+      });
+
+      if (response.success && response.data) {
+        console.log('从Firebase获取教程数据成功:', response.data);
+        this.tutorials = response.data;
+        this.renderTutorialList(response.data);
+      } else {
+        throw new Error(response.error || '获取教程数据失败');
+      }
+    } catch (error) {
+      console.error('从Firebase加载教程失败:', error);
+      this.showTutorialError(error.message);
+    }
+  }
+
+  // 渲染教程列表
+  renderTutorialList(tutorials) {
+    const tutorialList = document.getElementById('tutorialList');
+    
+    if (!tutorials || Object.keys(tutorials).length === 0) {
+      tutorialList.innerHTML = `
+        <div class="tutorial-error">
+          <p>暂无可用教程</p>
+        </div>
+      `;
+      return;
+    }
+
+    const tutorialKeys = Object.keys(tutorials);
+    tutorialList.innerHTML = '';
+
+    tutorialKeys.forEach((tutorialId, index) => {
+      const tutorial = tutorials[tutorialId];
+      const tutorialItem = this.createTutorialItem(tutorialId, tutorial, index);
+      tutorialList.appendChild(tutorialItem);
+    });
+  }
+
+  // 创建教程项
+  createTutorialItem(tutorialId, tutorial, index) {
+    const item = document.createElement('div');
+    item.className = 'tutorial-item';
+    item.setAttribute('data-tutorial-id', tutorialId);
+
+    const difficultyClass = this.getDifficultyClass(tutorial.difficulty || 'beginner');
+    const stepCount = tutorial.steps ? tutorial.steps.length : 0;
+
+    item.innerHTML = `
+      <div class="tutorial-info">
+        <h4>${tutorial.title || '未命名教程'}</h4>
+        <p>${tutorial.description || '暂无描述'}</p>
+        <div class="tutorial-meta">
+          <span class="difficulty ${difficultyClass}">${this.getDifficultyText(tutorial.difficulty || 'beginner')}</span>
+          <span class="duration">${tutorial.duration || '未知'}</span>
+        </div>
+      </div>
+      <div class="tutorial-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 0%"></div>
+        </div>
+        <span class="progress-text">0/${stepCount}</span>
+      </div>
+    `;
+
+    return item;
+  }
+
+  // 获取难度样式类
+  getDifficultyClass(difficulty) {
+    const difficultyMap = {
+      'beginner': 'beginner',
+      'intermediate': 'intermediate', 
+      'advanced': 'advanced'
+    };
+    return difficultyMap[difficulty] || 'beginner';
+  }
+
+  // 获取难度文本
+  getDifficultyText(difficulty) {
+    const difficultyMap = {
+      'beginner': '初级',
+      'intermediate': '中级',
+      'advanced': '高级'
+    };
+    return difficultyMap[difficulty] || '初级';
+  }
+
+  // 显示教程加载错误
+  showTutorialError(errorMessage) {
+    const tutorialList = document.getElementById('tutorialList');
+    tutorialList.innerHTML = `
+      <div class="tutorial-error">
+        <p>加载教程失败: ${errorMessage}</p>
+        <button class="retry-button" onclick="location.reload()">重试</button>
+      </div>
+    `;
   }
 
   async loadTutorialProgress() {
@@ -173,19 +336,19 @@ class PopupManager {
 
       // 更新教程进度显示
       const tutorialItems = document.querySelectorAll('.tutorial-item');
-      const tutorials = ['motion', 'looks', 'events'];
 
-      tutorialItems.forEach((item, index) => {
-        const tutorialId = tutorials[index];
+      for (const item of tutorialItems) {
+        const tutorialId = item.getAttribute('data-tutorial-id');
+        if (!tutorialId) continue;
+
         const tutorialProgress = progress[tutorialId];
-
         const progressFill = item.querySelector('.progress-fill');
         const progressText = item.querySelector('.progress-text');
 
-        if (tutorialProgress) {
-          const totalSteps = this.getTutorialStepCount(tutorialId);
+        if (tutorialProgress && this.tutorials && this.tutorials[tutorialId]) {
+          const totalSteps = this.tutorials[tutorialId].steps ? this.tutorials[tutorialId].steps.length : 0;
           const currentStep = tutorialProgress.currentStep + 1;
-          const progressPercent = (currentStep / totalSteps) * 100;
+          const progressPercent = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
 
           progressFill.style.width = `${progressPercent}%`;
           progressText.textContent = `${currentStep}/${totalSteps}`;
@@ -195,13 +358,32 @@ class PopupManager {
             progressFill.style.background = 'hsl(var(--success))';
           }
         }
-      });
+      }
     } catch (error) {
       console.error('加载教程进度失败:', error);
     }
   }
 
-  getTutorialStepCount(tutorialId) {
+  async getTutorialStepCount(tutorialId) {
+    try {
+      // 优先使用已加载的教程数据
+      if (this.tutorials && this.tutorials[tutorialId]) {
+        return this.tutorials[tutorialId].steps ? this.tutorials[tutorialId].steps.length : 0;
+      }
+
+      // 如果本地没有数据，尝试从Firebase获取
+      const response = await chrome.runtime.sendMessage({
+        action: 'getTutorials'
+      });
+      
+      if (response.success && response.data[tutorialId]) {
+        return response.data[tutorialId].steps ? response.data[tutorialId].steps.length : 0;
+      }
+    } catch (error) {
+      console.warn('获取教程步骤数失败:', error);
+    }
+    
+    // 默认步骤数作为回退
     const stepCounts = {
       'motion': 5,
       'looks': 5,
@@ -219,10 +401,16 @@ class PopupManager {
     const toggleAssistantBtn = document.getElementById('toggleAssistantBtn');
     toggleAssistantBtn.addEventListener('click', () => this.toggleAssistant());
 
-    // 教程项点击事件
-    const tutorialItems = document.querySelectorAll('.tutorial-item');
-    tutorialItems.forEach((item, index) => {
-      item.addEventListener('click', () => this.selectTutorial(index));
+    // 教程项点击事件 - 使用事件委托处理动态生成的元素
+    const tutorialList = document.getElementById('tutorialList');
+    tutorialList.addEventListener('click', (e) => {
+      const tutorialItem = e.target.closest('.tutorial-item');
+      if (tutorialItem) {
+        const tutorialId = tutorialItem.getAttribute('data-tutorial-id');
+        if (tutorialId) {
+          this.selectTutorialById(tutorialId);
+        }
+      }
     });
 
     // 设置变更事件
@@ -234,6 +422,8 @@ class PopupManager {
     const speechRateSetting = document.getElementById('speechRateSetting');
     const speechVolumeSetting = document.getElementById('speechVolumeSetting');
     const testVoiceBtn = document.getElementById('testVoiceBtn');
+    const syncFirebaseBtn = document.getElementById('syncFirebaseBtn');
+    const refreshTutorialsBtn = document.getElementById('refreshTutorialsBtn');
     
     autoPlaySetting.addEventListener('change', () => this.saveSettings());
     highlightSetting.addEventListener('change', () => this.saveSettings());
@@ -243,6 +433,8 @@ class PopupManager {
     speechRateSetting.addEventListener('input', () => this.onSpeechRateChange());
     speechVolumeSetting.addEventListener('input', () => this.onSpeechVolumeChange());
     testVoiceBtn.addEventListener('click', () => this.testVoice());
+    syncFirebaseBtn.addEventListener('click', () => this.syncTutorialsToFirebase());
+    refreshTutorialsBtn.addEventListener('click', () => this.refreshTutorials());
 
     // 底部链接事件
     document.getElementById('helpLink').addEventListener('click', () => this.openHelp());
@@ -325,7 +517,13 @@ class PopupManager {
         window.close();
       } catch (toggleError) {
         console.error('发送切换消息失败:', toggleError);
-        throw new Error('助手已加载但无法切换显示状态，请重试');
+        
+        // 提供更详细的错误信息和解决方案
+        if (toggleError.message.includes('Could not establish connection')) {
+          throw new Error(`无法连接到助手：${toggleError.message}\n\n解决方案：\n1. 刷新 Scratch 编辑器页面\n2. 重新加载扩展程序\n3. 使用调试工具检查连接状态`);
+        } else {
+          throw new Error('助手已加载但无法切换显示状态，请重试');
+        }
       }
       
     } catch (error) {
@@ -334,15 +532,18 @@ class PopupManager {
     }
   }
 
-  async selectTutorial(index) {
+  // 通过教程ID选择教程
+  async selectTutorialById(tutorialId) {
     try {
       if (!this.currentTab || !this.isScratchEditor(this.currentTab.url)) {
         alert('请先打开 Scratch 编辑器页面');
         return;
       }
 
-      const tutorials = ['motion', 'looks', 'events'];
-      const tutorialId = tutorials[index];
+      if (!this.tutorials || !this.tutorials[tutorialId]) {
+        alert('教程不存在或未加载');
+        return;
+      }
 
       // 保存教程选择到存储，用于同步
       await chrome.storage.local.set({ 
@@ -359,6 +560,21 @@ class PopupManager {
     } catch (error) {
       console.error('选择教程失败:', error);
       alert('无法连接到助手，请刷新页面后重试');
+    }
+  }
+
+  // 兼容旧的方法（通过索引选择）
+  async selectTutorial(index) {
+    if (!this.tutorials) {
+      alert('教程数据未加载，请稍后重试');
+      return;
+    }
+
+    const tutorialIds = Object.keys(this.tutorials);
+    if (index >= 0 && index < tutorialIds.length) {
+      await this.selectTutorialById(tutorialIds[index]);
+    } else {
+      alert('无效的教程索引');
     }
   }
 
@@ -846,6 +1062,235 @@ class PopupManager {
     } catch (error) {
       throw new Error(`百度TTS测试失败: ${error.message}`);
     }
+  }
+
+  // 同步教程数据到Firebase
+  async syncTutorialsToFirebase() {
+    const syncBtn = document.getElementById('syncFirebaseBtn');
+    const originalText = syncBtn.innerHTML;
+    
+    try {
+      // 更新按钮状态
+      syncBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/hourglass--v1.png" alt="同步中">同步中...';
+      syncBtn.disabled = true;
+
+      // 获取默认教程数据
+      const defaultTutorials = this.getDefaultTutorials();
+      
+      // 通过background script同步到Firebase
+      const response = await chrome.runtime.sendMessage({
+        action: 'syncTutorialsToFirebase',
+        tutorials: defaultTutorials
+      });
+
+      if (response.success) {
+        // 显示成功消息
+        syncBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/checkmark--v1.png" alt="成功">同步成功';
+        syncBtn.style.background = '#28a745';
+        
+        // 2秒后恢复按钮
+        setTimeout(() => {
+          syncBtn.innerHTML = originalText;
+          syncBtn.disabled = false;
+          syncBtn.style.background = '';
+        }, 2000);
+        
+        console.log('教程数据同步到Firebase成功');
+      } else {
+        throw new Error(response.error || '同步失败');
+      }
+    } catch (error) {
+      console.error('同步教程数据到Firebase失败:', error);
+      
+      // 显示错误消息
+      syncBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/cancel--v1.png" alt="失败">同步失败';
+      syncBtn.style.background = '#dc3545';
+      
+      // 2秒后恢复按钮
+      setTimeout(() => {
+        syncBtn.innerHTML = originalText;
+        syncBtn.disabled = false;
+        syncBtn.style.background = '';
+      }, 2000);
+    }
+  }
+
+  // 刷新教程数据
+  async refreshTutorials() {
+    const refreshBtn = document.getElementById('refreshTutorialsBtn');
+    const originalText = refreshBtn.innerHTML;
+    
+    try {
+      // 更新按钮状态
+      refreshBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/hourglass--v1.png" alt="刷新中">刷新中...';
+      refreshBtn.disabled = true;
+
+      // 检查是否在Scratch编辑器页面
+      if (!this.currentTab || !this.isScratchEditor(this.currentTab.url)) {
+        throw new Error('请在Scratch编辑器页面中使用此功能');
+      }
+
+      // 发送刷新消息到content script
+      await chrome.tabs.sendMessage(this.currentTab.id, {
+        action: 'refreshTutorials'
+      });
+
+      // 显示成功消息
+      refreshBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/checkmark--v1.png" alt="成功">刷新成功';
+      refreshBtn.style.background = '#28a745';
+      
+      // 2秒后恢复按钮
+      setTimeout(() => {
+        refreshBtn.innerHTML = originalText;
+        refreshBtn.disabled = false;
+        refreshBtn.style.background = '';
+      }, 2000);
+      
+      console.log('教程数据刷新成功');
+    } catch (error) {
+      console.error('刷新教程数据失败:', error);
+      
+      // 显示错误消息
+      refreshBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/cancel--v1.png" alt="失败">刷新失败';
+      refreshBtn.style.background = '#dc3545';
+      
+      // 2秒后恢复按钮
+      setTimeout(() => {
+        refreshBtn.innerHTML = originalText;
+        refreshBtn.disabled = false;
+        refreshBtn.style.background = '';
+      }, 2000);
+      
+      alert(`刷新教程数据失败: ${error.message}`);
+    }
+  }
+
+  // 获取默认教程数据
+  getDefaultTutorials() {
+    return {
+      motion: {
+        id: 'motion',
+        title: '运动积木教程',
+        category: 'motion',
+        difficulty: 'beginner',
+        duration: '5分钟',
+        description: '学习如何使用运动积木让角色移动',
+        steps: [
+          {
+            id: 'motion_1',
+            text: '欢迎学习 Scratch 运动积木！运动积木可以让你的角色在舞台上移动。',
+            action: 'intro',
+            highlight: null
+          },
+          {
+            id: 'motion_2', 
+            text: '首先，在积木面板左侧找到蓝色的"运动"分类，点击它。',
+            action: 'find-motion-category',
+            highlight: '.blocklyTreeRow[data-id="motion"]'
+          },
+          {
+            id: 'motion_3',
+            text: '找到"移动10步"积木，用鼠标拖拽它到右侧的脚本区域。',
+            action: 'drag-move-block',
+            highlight: '[data-id="motion_movesteps"]'
+          },
+          {
+            id: 'motion_4',
+            text: '点击这个积木试试看，你的角色应该会向右移动10步。',
+            action: 'test-move-block',
+            highlight: '.blocklyDraggable[data-id*="motion_movesteps"]'
+          },
+          {
+            id: 'motion_5',
+            text: '很好！现在双击积木中的数字"10"，把它改成"50"，看看有什么变化。',
+            action: 'modify-steps',
+            highlight: '.blocklyEditableText'
+          }
+        ]
+      },
+      
+      looks: {
+        id: 'looks',
+        title: '外观积木教程',
+        category: 'looks', 
+        difficulty: 'beginner',
+        duration: '4分钟',
+        description: '学习如何使用外观积木改变角色的外观',
+        steps: [
+          {
+            id: 'looks_1',
+            text: '现在学习外观积木！外观积木可以改变角色的样子和说话。',
+            action: 'intro',
+            highlight: null
+          },
+          {
+            id: 'looks_2',
+            text: '在积木面板中找到紫色的"外观"分类，点击它。',
+            action: 'find-looks-category', 
+            highlight: '.blocklyTreeRow[data-id="looks"]'
+          },
+          {
+            id: 'looks_3',
+            text: '找到"说 Hello! 持续2秒"积木，拖拽到脚本区域。',
+            action: 'drag-say-block',
+            highlight: '[data-id="looks_sayforsecs"]'
+          },
+          {
+            id: 'looks_4',
+            text: '点击这个积木，你的角色会说话并显示一个对话框！',
+            action: 'test-say-block',
+            highlight: '.blocklyDraggable[data-id*="looks_sayforsecs"]'
+          },
+          {
+            id: 'looks_5',
+            text: '试着修改对话内容，双击"Hello!"文字，输入你想说的话。',
+            action: 'modify-text',
+            highlight: '.blocklyEditableText'
+          }
+        ]
+      },
+      
+      events: {
+        id: 'events',
+        title: '事件积木教程',
+        category: 'events',
+        difficulty: 'beginner', 
+        duration: '6分钟',
+        description: '学习如何使用事件积木让程序响应用户操作',
+        steps: [
+          {
+            id: 'events_1',
+            text: '事件积木非常重要！它们告诉程序什么时候开始运行。',
+            action: 'intro',
+            highlight: null
+          },
+          {
+            id: 'events_2',
+            text: '找到橙色的"事件"分类，这里有各种启动程序的方式。',
+            action: 'find-events-category',
+            highlight: '.blocklyTreeRow[data-id="event"]'
+          },
+          {
+            id: 'events_3', 
+            text: '拖拽"当点击绿旗时"积木到脚本区域，这是最常用的启动方式。',
+            action: 'drag-flag-block',
+            highlight: '[data-id="event_whenflagclicked"]'
+          },
+          {
+            id: 'events_4',
+            text: '现在把之前的运动积木连接到这个事件积木下面。',
+            action: 'connect-blocks',
+            highlight: '.blocklyDraggable'
+          },
+          {
+            id: 'events_5',
+            text: '点击舞台上方的绿色旗子，看看程序是否运行了！',
+            action: 'test-flag',
+            highlight: '.green-flag'
+          }
+        ]
+      }
+    };
   }
 
 

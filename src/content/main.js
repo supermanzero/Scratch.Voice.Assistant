@@ -1,6 +1,8 @@
 // Scratch 教程语音助手 - 主内容脚本
 class ScratchVoiceAssistant {
   constructor() {
+    console.log('ScratchVoiceAssistant 构造函数开始执行...');
+    
     this.isInitialized = false;
     this.widget = null;
     this.isCollapsed = false;
@@ -19,9 +21,36 @@ class ScratchVoiceAssistant {
     // 检测操作系统
     this.isWindows = this.detectWindowsOS();
 
-    this.init();
-    this.setupMessageListener();
-    this.setupStorageListener();
+    console.log('开始初始化各个组件...');
+    
+    try {
+      // 先设置消息监听器，确保能响应ping消息
+      console.log('设置消息监听器...');
+      this.setupMessageListener();
+      console.log('设置存储监听器...');
+      this.setupStorageListener();
+      
+      // 标记消息监听器已设置
+      this.messageListenerReady = true;
+      console.log('消息监听器已就绪');
+      
+      // 异步初始化其他组件
+      console.log('开始异步初始化...');
+      this.init().then(() => {
+        console.log('ScratchVoiceAssistant 异步初始化完成');
+        this.isInitialized = true;
+      }).catch((error) => {
+        console.error('ScratchVoiceAssistant 异步初始化失败:', error);
+        console.error('错误堆栈:', error.stack);
+        this.isInitialized = false;
+      });
+      
+      console.log('ScratchVoiceAssistant 构造函数执行完成');
+    } catch (error) {
+      console.error('ScratchVoiceAssistant 构造函数执行失败:', error);
+      console.error('错误堆栈:', error.stack);
+      throw error;
+    }
   }
 
   // 检测是否为Windows操作系统
@@ -958,49 +987,62 @@ class ScratchVoiceAssistant {
   }
 
   async loadTutorials() {
-    // 模拟教程数据 - 实际项目中会从 JSON 文件加载
-    const tutorials = {
-      'motion': {
-        title: '运动积木教程',
-        steps: [
-          { text: '欢迎学习 Scratch 运动积木！让我们开始创建一个简单的动画。', action: 'intro' },
-          { text: '首先，从积木面板中找到运动分类，它通常是蓝色的。', action: 'find-motion' },
-          { text: '拖拽"移动10步"积木到脚本区域。', action: 'drag-move' },
-          { text: '点击这个积木，看看角色是否移动了。', action: 'test-move' },
-          { text: '很好！现在尝试修改步数，比如改成50步。', action: 'modify-steps' }
-        ]
-      },
-      'looks': {
-        title: '外观积木教程',
-        steps: [
-          { text: '现在学习外观积木，让角色更有趣！', action: 'intro' },
-          { text: '找到紫色的外观积木分类。', action: 'find-looks' },
-          { text: '拖拽"说Hello!持续2秒"积木到脚本区域。', action: 'drag-say' },
-          { text: '点击积木，角色会说话！', action: 'test-say' },
-          { text: '尝试修改文字内容，让角色说不同的话。', action: 'modify-text' }
-        ]
-      },
-      'events': {
-        title: '事件积木教程',
-        steps: [
-          { text: '学习事件积木，让程序响应用户操作！', action: 'intro' },
-          { text: '找到黄色的事件积木分类。', action: 'find-events' },
-          { text: '拖拽"当绿旗被点击"积木到脚本区域。', action: 'drag-flag' },
-          { text: '这是程序的开始积木，点击绿旗试试。', action: 'test-flag' },
-          { text: '现在可以在下面连接其他积木了！', action: 'connect-blocks' }
-        ]
-      },
-      'control': {
-        title: '控制积木教程',
-        steps: [
-          { text: '学习控制积木，让程序更智能！', action: 'intro' },
-          { text: '找到橙色的控制积木分类。', action: 'find-control' },
-          { text: '拖拽"重复10次"积木到脚本区域。', action: 'drag-repeat' },
-          { text: '在重复积木内放入其他积木。', action: 'add-inside' },
-          { text: '点击运行，看看重复效果！', action: 'test-repeat' }
-        ]
-      }
-    };
+    let tutorials;
+    
+    try {
+      // 尝试从Firebase获取教程数据
+      console.log('尝试从Firebase获取教程数据...');
+      tutorials = await this.getTutorialsFromFirebase();
+      console.log('从Firebase获取教程数据成功:', tutorials);
+    } catch (error) {
+      console.warn('从Firebase获取教程数据失败，使用默认数据:', error);
+      // 使用默认教程数据作为回退
+      tutorials = {
+        'motion': {
+          title: '运动积木教程',
+          steps: [
+            { text: '欢迎学习 Scratch 运动积木！让我们开始创建一个简单的动画。', action: 'intro' },
+            { text: '首先，从积木面板中找到运动分类，它通常是蓝色的。', action: 'find-motion' },
+            { text: '拖拽"移动10步"积木到脚本区域。', action: 'drag-move' },
+            { text: '点击这个积木，看看角色是否移动了。', action: 'test-move' },
+            { text: '很好！现在尝试修改步数，比如改成50步。', action: 'modify-steps' }
+          ]
+        },
+        'looks': {
+          title: '外观积木教程',
+          steps: [
+            { text: '现在学习外观积木，让角色更有趣！', action: 'intro' },
+            { text: '找到紫色的外观积木分类。', action: 'find-looks' },
+            { text: '拖拽"说Hello!持续2秒"积木到脚本区域。', action: 'drag-say' },
+            { text: '点击积木，角色会说话！', action: 'test-say' },
+            { text: '尝试修改文字内容，让角色说不同的话。', action: 'modify-text' }
+          ]
+        },
+        'events': {
+          title: '事件积木教程',
+          steps: [
+            { text: '学习事件积木，让程序响应用户操作！', action: 'intro' },
+            { text: '找到黄色的事件积木分类。', action: 'find-events' },
+            { text: '拖拽"当绿旗被点击"积木到脚本区域。', action: 'drag-flag' },
+            { text: '这是程序的开始积木，点击绿旗试试。', action: 'test-flag' },
+            { text: '现在可以在下面连接其他积木了！', action: 'connect-blocks' }
+          ]
+        },
+        'control': {
+          title: '控制积木教程',
+          steps: [
+            { text: '学习控制积木，让程序更智能！', action: 'intro' },
+            { text: '找到橙色的控制积木分类。', action: 'find-control' },
+            { text: '拖拽"重复10次"积木到脚本区域。', action: 'drag-repeat' },
+            { text: '在重复积木内放入其他积木。', action: 'add-inside' },
+            { text: '点击运行，看看重复效果！', action: 'test-repeat' }
+          ]
+        }
+      };
+    }
+
+    // 保存教程数据到实例
+    this.tutorials = tutorials;
 
     const select = this.widget.querySelector('#tutorialSelect');
     if (!select) return;
@@ -1014,8 +1056,47 @@ class ScratchVoiceAssistant {
       option.textContent = tutorials[key].title;
       select.appendChild(option);
     });
+  }
 
-    this.tutorials = tutorials;
+  // 从Firebase获取教程数据
+  async getTutorialsFromFirebase() {
+    try {
+      // 通过background script获取教程数据
+      const response = await chrome.runtime.sendMessage({
+        action: 'getTutorials'
+      });
+      
+      if (response.success) {
+        return response.data;
+      } else {
+        throw new Error(response.error || '获取教程数据失败');
+      }
+    } catch (error) {
+      console.error('从Firebase获取教程数据失败:', error);
+      throw error;
+    }
+  }
+
+  // 刷新教程数据（从Firebase重新加载）
+  async refreshTutorials() {
+    try {
+      console.log('刷新教程数据...');
+      await this.loadTutorials();
+      
+      // 如果当前有选中的教程，保持选中状态
+      if (this.currentTutorial) {
+        const currentTutorialKey = Object.keys(this.tutorials).find(key => 
+          this.tutorials[key] === this.currentTutorial
+        );
+        if (currentTutorialKey) {
+          this.selectTutorial(currentTutorialKey);
+        }
+      }
+      
+      console.log('教程数据刷新完成');
+    } catch (error) {
+      console.error('刷新教程数据失败:', error);
+    }
   }
 
   // 恢复上次选择的教程
@@ -1920,9 +2001,11 @@ class ScratchVoiceAssistant {
   setupMessageListener() {
     // 确保只设置一次监听器
     if (this.messageListenerSetup) {
+      console.log('消息监听器已设置，跳过重复设置');
       return;
     }
     
+    console.log('设置消息监听器...');
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log('Content script 收到消息:', request);
 
@@ -1949,6 +2032,19 @@ class ScratchVoiceAssistant {
             this.selectTutorial(request.tutorialId);
             sendResponse({ success: true });
             return true;
+
+          case 'refreshTutorials':
+            console.log('刷新教程数据请求');
+            // 异步处理刷新请求
+            this.refreshTutorials()
+              .then(() => {
+                sendResponse({ success: true });
+              })
+              .catch((error) => {
+                console.error('刷新教程数据失败:', error);
+                sendResponse({ success: false, error: error.message });
+              });
+            return true; // 异步响应
 
           case 'updateSettings':
             console.log('更新设置:', request.settings);
@@ -2377,14 +2473,17 @@ function isScratchEditor() {
 
 // 初始化助手的函数
 function initializeScratchAssistant() {
+  console.log('=== 开始初始化Scratch语音助手 ===');
+  console.log('当前URL:', window.location.href);
+  console.log('页面加载状态:', document.readyState);
+  console.log('是否为Scratch编辑器:', isScratchEditor());
+  
   if (!isScratchEditor()) {
-    console.log('当前页面不是 Scratch 编辑器:', window.location.href);
-    return;
+    console.log('当前页面不是 Scratch 编辑器，跳过初始化');
+    return null;
   }
 
-  console.log('检测到 Scratch 编辑器页面，初始化语音助手...');
-  console.log('页面 URL:', window.location.href);
-  console.log('页面加载状态:', document.readyState);
+  console.log('检测到 Scratch 编辑器页面，开始初始化语音助手...');
 
   try {
     // 检查是否已经初始化过
@@ -2393,13 +2492,26 @@ function initializeScratchAssistant() {
       return window.scratchVoiceAssistant;
     }
 
+    console.log('创建ScratchVoiceAssistant实例...');
     const assistant = new ScratchVoiceAssistant();
+    
+    console.log('将实例暴露到全局...');
     // 将实例暴露到全局，便于调试和消息处理
     window.scratchVoiceAssistant = assistant;
-    console.log('Scratch 语音助手初始化成功');
+    
+    console.log('Scratch 语音助手初始化成功！');
+    console.log('全局实例:', window.scratchVoiceAssistant);
+    console.log('消息监听器状态:', assistant.messageListenerReady);
+    
     return assistant;
   } catch (error) {
     console.error('Scratch 语音助手初始化失败:', error);
+    console.error('错误堆栈:', error.stack);
+    console.error('错误详情:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
     return null;
   }
 }

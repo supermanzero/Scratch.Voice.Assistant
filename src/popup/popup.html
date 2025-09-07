@@ -47,55 +47,10 @@
       <div class="tutorials-section">
         <h3>教程列表</h3>
         <div class="tutorial-list" id="tutorialList">
-          <div class="tutorial-item">
-            <div class="tutorial-info">
-              <h4>运动积木教程</h4>
-              <p>学习如何让角色移动</p>
-              <div class="tutorial-meta">
-                <span class="difficulty beginner">初级</span>
-                <span class="duration">5分钟</span>
-              </div>
-            </div>
-            <div class="tutorial-progress">
-              <div class="progress-bar">
-                <div class="progress-fill" style="width: 0%"></div>
-              </div>
-              <span class="progress-text">0/5</span>
-            </div>
-          </div>
-
-          <div class="tutorial-item">
-            <div class="tutorial-info">
-              <h4>外观积木教程</h4>
-              <p>改变角色的外观和对话</p>
-              <div class="tutorial-meta">
-                <span class="difficulty beginner">初级</span>
-                <span class="duration">4分钟</span>
-              </div>
-            </div>
-            <div class="tutorial-progress">
-              <div class="progress-bar">
-                <div class="progress-fill" style="width: 0%"></div>
-              </div>
-              <span class="progress-text">0/5</span>
-            </div>
-          </div>
-
-          <div class="tutorial-item">
-            <div class="tutorial-info">
-              <h4>事件积木教程</h4>
-              <p>让程序响应用户操作</p>
-              <div class="tutorial-meta">
-                <span class="difficulty beginner">初级</span>
-                <span class="duration">6分钟</span>
-              </div>
-            </div>
-            <div class="tutorial-progress">
-              <div class="progress-bar">
-                <div class="progress-fill" style="width: 0%"></div>
-              </div>
-              <span class="progress-text">0/5</span>
-            </div>
+          <!-- 教程列表将通过JavaScript动态生成 -->
+          <div class="loading-tutorials">
+            <div class="loading-spinner"></div>
+            <p>正在加载教程...</p>
           </div>
         </div>
       </div>
@@ -153,12 +108,11 @@
           </div>
         </div>
         <div class="setting-item">
-          <button class="test-voice-btn" id="testVoiceBtn">
-            <img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/play--v1.png" alt="测试">
-            测试语音
+          <button class="sync-firebase-btn" id="syncFirebaseBtn">
+            <img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/cloud-upload--v1.png" alt="同步">
+            同步教程到Firebase
           </button>
         </div>
-
       </div>
     </main>
 

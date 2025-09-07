@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 允许读取和写入tutorials集合
+    match /tutorials/{tutorialId} {
+      allow read, write: if true;
+    }
+    
+    // 允许读取和写入其他集合（如果需要）
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

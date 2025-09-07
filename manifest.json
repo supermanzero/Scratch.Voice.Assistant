@@ -15,7 +15,10 @@
     "https://machinelearningforkids.co.uk/*",
     "https://tsn.baidu.com/*",
     "https://aip.baidubce.com/*",
-    "https://translate.google.com/*"
+    "https://translate.google.com/*",
+    "https://firebase.googleapis.com/*",
+    "https://firestore.googleapis.com/*",
+    "https://*.googleapis.com/*"
   ],
   
   "content_scripts": [
@@ -27,7 +30,7 @@
         "https://scratch.mit.edu/create*",
         "https://machinelearningforkids.co.uk/*"
       ],
-      "js": ["src/content/main.js"],
+      "js": ["src/firebase/config.js", "src/content/main.js"],
       "css": ["assets/css/content.css"],
       "run_at": "document_idle",
       "all_frames": false

@@ -1,5 +1,82 @@
 // Scratch 教程语音助手 - 后台服务脚本
 
+// Firebase 配置
+const firebaseConfig = {
+  apiKey: "AIzaSyCGAtiGTiGa-_cZxtJZvViBga_ci0SmusM",
+  authDomain: "scratch-21d62.firebaseapp.com",
+  projectId: "scratch-21d62",
+  storageBucket: "scratch-21d62.firebasestorage.app",
+  messagingSenderId: "655135966773",
+  appId: "1:655135966773:web:2c03b1e12d8d822031137c",
+  measurementId: "G-8MLLDD345R"
+};
+
+// 从Firebase获取教程数据
+async function getTutorialsFromFirebase() {
+  try {
+    // 使用Firebase REST API获取数据
+    const projectId = firebaseConfig.projectId;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tutorials`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Firebase请求失败: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // 转换Firestore格式到我们的格式
+    const tutorials = {};
+    if (data.documents) {
+      data.documents.forEach(doc => {
+        const tutorialId = doc.name.split('/').pop();
+        const tutorialData = convertFirestoreDocument(doc);
+        tutorials[tutorialId] = {
+          id: tutorialId,
+          ...tutorialData
+        };
+      });
+    }
+    
+    console.log('从Firebase获取教程数据:', tutorials);
+    return tutorials;
+  } catch (error) {
+    console.error('从Firebase获取教程数据失败:', error);
+    throw error;
+  }
+}
+
+// 转换Firestore文档格式
+function convertFirestoreDocument(doc) {
+  const fields = doc.fields || {};
+  const result = {};
+  
+  // 递归转换字段
+  function convertField(field) {
+    if (field.stringValue !== undefined) return field.stringValue;
+    if (field.integerValue !== undefined) return parseInt(field.integerValue);
+    if (field.doubleValue !== undefined) return parseFloat(field.doubleValue);
+    if (field.booleanValue !== undefined) return field.booleanValue;
+    if (field.arrayValue) {
+      return field.arrayValue.values.map(convertField);
+    }
+    if (field.mapValue) {
+      const mapResult = {};
+      Object.keys(field.mapValue.fields || {}).forEach(key => {
+        mapResult[key] = convertField(field.mapValue.fields[key]);
+      });
+      return mapResult;
+    }
+    return null;
+  }
+  
+  Object.keys(fields).forEach(key => {
+    result[key] = convertField(fields[key]);
+  });
+  
+  return result;
+}
+
 // 扩展安装时的初始化
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('Scratch 教程语音助手已安装');
@@ -37,6 +114,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleFetchTTSAudio(request, sendResponse);
       return true; // 异步响应
       
+    case 'syncTutorialsToFirebase':
+      handleSyncTutorialsToFirebase(request, sendResponse);
+      return true; // 异步响应
+      
     default:
       console.log('未知消息类型:', request.action);
   }
@@ -45,13 +126,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // 获取教程数据
 async function handleGetTutorials(sendResponse) {
   try {
-    // 这里可以从远程服务器获取最新的教程数据
-    // 目前使用本地数据
-    const tutorials = await loadLocalTutorials();
+    // 从Firebase获取教程数据
+    const tutorials = await getTutorialsFromFirebase();
     sendResponse({ success: true, data: tutorials });
   } catch (error) {
     console.error('获取教程数据失败:', error);
-    sendResponse({ success: false, error: error.message });
+    // 如果Firebase失败，使用本地数据作为回退
+    try {
+      const tutorials = await loadLocalTutorials();
+      sendResponse({ success: true, data: tutorials });
+    } catch (fallbackError) {
+      console.error('本地教程数据也失败:', fallbackError);
+      sendResponse({ success: false, error: error.message });
+    }
   }
 }
 
@@ -365,6 +452,34 @@ async function buildBaiduTTSRequest(text, settings) {
   };
 }
 
+// 获取Firebase访问令牌
+async function getFirebaseToken() {
+  try {
+    // 使用Firebase REST API获取访问令牌
+    const tokenUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInAnonymously?key=${firebaseConfig.apiKey}`;
+    
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        returnSecureToken: true
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`获取Firebase token失败: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data.idToken;
+  } catch (error) {
+    console.warn('获取Firebase token失败，尝试不使用认证:', error);
+    return null;
+  }
+}
+
 // 获取百度API访问令牌
 async function getBaiduAccessToken(ak, sk) {
   try {
@@ -400,6 +515,117 @@ async function getBaiduAccessToken(ak, sk) {
   } catch (error) {
     throw new Error(`获取百度API访问令牌失败: ${error.message}`);
   }
+}
+
+// 同步教程数据到Firebase
+async function handleSyncTutorialsToFirebase(request, sendResponse) {
+  try {
+    const { tutorials } = request;
+    console.log('开始同步教程数据到Firebase:', tutorials);
+    
+    // 检查Firestore安全规则
+    const projectId = firebaseConfig.projectId;
+    const results = [];
+    
+    for (const [tutorialId, tutorialData] of Object.entries(tutorials)) {
+      try {
+        // 转换数据格式为Firestore格式
+        const firestoreData = convertToFirestoreFormat(tutorialData);
+        
+        // 使用PATCH方法更新文档
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tutorials/${tutorialId}`;
+        
+        const response = await fetch(url, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fields: firestoreData
+          })
+        });
+        
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error(`同步教程 ${tutorialId} 失败: 403 权限被拒绝。请检查Firestore安全规则。`);
+          } else {
+            throw new Error(`同步教程 ${tutorialId} 失败: ${response.status} ${response.statusText}`);
+          }
+        }
+        
+        const result = await response.json();
+        results.push({ tutorialId, success: true, result });
+        console.log(`教程 ${tutorialId} 同步成功`);
+        
+      } catch (error) {
+        console.error(`同步教程 ${tutorialId} 失败:`, error);
+        results.push({ tutorialId, success: false, error: error.message });
+      }
+    }
+    
+    // 检查是否有失败的同步
+    const failedSyncs = results.filter(r => !r.success);
+    if (failedSyncs.length > 0) {
+      const errorMessage = failedSyncs.some(f => f.error.includes('403')) 
+        ? 'Firebase权限错误：请更新Firestore安全规则以允许写入操作。详细说明请查看 firebase-setup-instructions.md 文件。'
+        : `部分教程同步失败: ${failedSyncs.map(f => f.tutorialId).join(', ')}`;
+      
+      throw new Error(errorMessage);
+    }
+    
+    console.log('所有教程数据同步到Firebase成功');
+    sendResponse({ 
+      success: true, 
+      message: `成功同步 ${results.length} 个教程到Firebase`,
+      results: results
+    });
+    
+  } catch (error) {
+    console.error('同步教程数据到Firebase失败:', error);
+    sendResponse({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+}
+
+// 转换数据格式为Firestore格式
+function convertToFirestoreFormat(data) {
+  const result = {};
+  
+  function convertValue(value) {
+    if (typeof value === 'string') {
+      return { stringValue: value };
+    } else if (typeof value === 'number') {
+      if (Number.isInteger(value)) {
+        return { integerValue: value.toString() };
+      } else {
+        return { doubleValue: value };
+      }
+    } else if (typeof value === 'boolean') {
+      return { booleanValue: value };
+    } else if (Array.isArray(value)) {
+      return {
+        arrayValue: {
+          values: value.map(convertValue)
+        }
+      };
+    } else if (typeof value === 'object' && value !== null) {
+      return {
+        mapValue: {
+          fields: convertToFirestoreFormat(value)
+        }
+      };
+    } else {
+      return { nullValue: null };
+    }
+  }
+  
+  Object.keys(data).forEach(key => {
+    result[key] = convertValue(data[key]);
+  });
+  
+  return result;
 }
 
 // 处理扩展图标点击
