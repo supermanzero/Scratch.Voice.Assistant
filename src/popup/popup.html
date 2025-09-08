@@ -16,6 +16,41 @@
       <div class="version">v1.0.0</div>
     </header>
 
+    <!-- 授权验证界面 -->
+    <div class="license-required" id="licenseRequired" style="display: none;">
+      <div class="license-modal">
+        <div class="license-header">
+          <h2>🔑 授权验证</h2>
+          <p>请输入授权码以使用 Scratch 教学助手</p>
+        </div>
+        
+        <div class="license-form">
+          <div class="form-group">
+            <label for="licenseCodeInput">授权码:</label>
+            <input type="text" id="licenseCodeInput" placeholder="请输入授权码" maxlength="50">
+          </div>
+          
+          <div class="device-info">
+            <div class="device-uuid">
+              <span class="label">设备ID:</span>
+              <span class="value" id="deviceUuid">获取中...</span>
+            </div>
+          </div>
+          
+          <div class="license-actions">
+            <button class="btn-primary" id="validateLicenseBtn">验证授权码</button>
+            <button class="btn-secondary" id="clearLicenseBtn">清除授权</button>
+          </div>
+          
+          <div class="license-message" id="licenseMessage" style="display: none;"></div>
+        </div>
+        
+        <div class="license-footer">
+          <p class="help-text">如果您没有授权码，请联系管理员获取</p>
+        </div>
+      </div>
+    </div>
+
     <main class="popup-main">
       <div class="status-section">
         <div class="status-item">

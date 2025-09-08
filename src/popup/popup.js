@@ -108,80 +108,154 @@ class PopupManager {
     if (mainContent) {
       mainContent.style.display = 'none';
     }
-    
-    // 显示授权提示
-    const body = document.body;
-    body.innerHTML = `
-      <div class="license-required">
-        <div class="license-icon">🔑</div>
-        <h2>需要授权</h2>
-        <p>请先验证授权码以使用 Scratch Voice Assistant</p>
-        <button id="openLicenseModal" class="btn btn-primary">输入授权码</button>
-        <div class="help-text">
-          如果您没有授权码，请联系管理员获取
-        </div>
-      </div>
-    `;
-    
-    // 添加样式
-    const style = document.createElement('style');
-    style.textContent = `
-      .license-required {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 400px;
-        padding: 40px 20px;
-        text-align: center;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-      }
-      .license-icon {
-        font-size: 64px;
-        margin-bottom: 20px;
-      }
-      .license-required h2 {
-        font-size: 24px;
-        margin-bottom: 12px;
-        font-weight: 600;
-      }
-      .license-required p {
-        font-size: 16px;
-        margin-bottom: 24px;
-        opacity: 0.9;
-      }
-      .btn {
-        padding: 12px 24px;
-        border: none;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-decoration: none;
-        display: inline-block;
-      }
-      .btn-primary {
-        background: white;
-        color: #667eea;
-      }
-      .btn-primary:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-      }
-      .help-text {
-        margin-top: 20px;
-        font-size: 12px;
-        opacity: 0.8;
-      }
-    `;
-    document.head.appendChild(style);
+
+    // 显示授权验证界面
+    const licenseRequired = document.getElementById('licenseRequired');
+    if (licenseRequired) {
+      licenseRequired.style.display = 'flex';
+      this.initializeLicenseModal();
+    }
+  }
+
+  // 初始化内置授权验证界面
+  initializeLicenseModal() {
+    // 显示设备UUID
+    this.displayDeviceUuid();
     
     // 绑定事件
-    document.getElementById('openLicenseModal').addEventListener('click', () => {
-      this.openLicenseModal();
-    });
+    const validateBtn = document.getElementById('validateLicenseBtn');
+    const clearBtn = document.getElementById('clearLicenseBtn');
+    const licenseInput = document.getElementById('licenseCodeInput');
+    
+    if (validateBtn) {
+      validateBtn.addEventListener('click', () => this.handleLicenseSubmit());
+    }
+    
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => this.handleClearLicense());
+    }
+    
+    if (licenseInput) {
+      licenseInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.handleLicenseSubmit();
+        }
+      });
+    }
+  }
+
+  // 显示设备UUID
+  displayDeviceUuid() {
+    const deviceUuidElement = document.getElementById('deviceUuid');
+    if (deviceUuidElement && window.licenseService) {
+      const uuid = window.licenseService.getDeviceUuid();
+      deviceUuidElement.textContent = uuid;
+    } else if (deviceUuidElement) {
+      deviceUuidElement.textContent = '无法获取设备ID';
+    }
+  }
+
+  // 处理授权码提交
+  async handleLicenseSubmit() {
+    const licenseCodeInput = document.getElementById('licenseCodeInput');
+    const validateBtn = document.getElementById('validateLicenseBtn');
+    const messageElement = document.getElementById('licenseMessage');
+    
+    if (!licenseCodeInput || !validateBtn || !messageElement) {
+      return;
+    }
+    
+    const licenseCode = licenseCodeInput.value.trim();
+    if (!licenseCode) {
+      this.showLicenseMessage('请输入授权码', 'error');
+      return;
+    }
+    
+    // 设置加载状态
+    validateBtn.disabled = true;
+    validateBtn.textContent = '验证中...';
+    this.showLicenseMessage('正在验证授权码...', 'info');
+    
+    try {
+      if (!window.licenseService) {
+        throw new Error('授权服务未初始化');
+      }
+      
+      const result = await window.licenseService.validateLicense(licenseCode);
+      
+      if (result.success) {
+        this.showLicenseMessage(result.message, 'success');
+        // 验证成功后重新初始化界面
+        setTimeout(() => {
+          this.initializeAfterAuth();
+        }, 1500);
+      } else {
+        this.showLicenseMessage(result.message, 'error');
+      }
+    } catch (error) {
+      console.error('授权验证失败:', error);
+      this.showLicenseMessage('授权验证失败: ' + error.message, 'error');
+    } finally {
+      validateBtn.disabled = false;
+      validateBtn.textContent = '验证授权码';
+    }
+  }
+
+  // 处理清除授权
+  async handleClearLicense() {
+    const clearBtn = document.getElementById('clearLicenseBtn');
+    const messageElement = document.getElementById('licenseMessage');
+    
+    if (!clearBtn || !messageElement) {
+      return;
+    }
+    
+    if (!confirm('确定要清除当前授权吗？')) {
+      return;
+    }
+    
+    clearBtn.disabled = true;
+    clearBtn.textContent = '清除中...';
+    this.showLicenseMessage('正在清除授权...', 'info');
+    
+    try {
+      if (!window.licenseService) {
+        throw new Error('授权服务未初始化');
+      }
+      
+      const localInfo = window.licenseService.getLocalLicenseInfo();
+      if (localInfo.hasLicense) {
+        const result = await window.licenseService.clearLicense(localInfo.licenseCode);
+        if (result.success) {
+          this.showLicenseMessage('授权已清除', 'success');
+          // 清空输入框
+          const licenseInput = document.getElementById('licenseCodeInput');
+          if (licenseInput) {
+            licenseInput.value = '';
+          }
+        } else {
+          this.showLicenseMessage('清除授权失败: ' + result.message, 'error');
+        }
+      } else {
+        this.showLicenseMessage('没有找到本地授权信息', 'info');
+      }
+    } catch (error) {
+      console.error('清除授权失败:', error);
+      this.showLicenseMessage('清除授权失败: ' + error.message, 'error');
+    } finally {
+      clearBtn.disabled = false;
+      clearBtn.textContent = '清除授权';
+    }
+  }
+
+  // 显示授权消息
+  showLicenseMessage(message, type) {
+    const messageElement = document.getElementById('licenseMessage');
+    if (messageElement) {
+      messageElement.textContent = message;
+      messageElement.className = `license-message ${type}`;
+      messageElement.style.display = 'block';
+    }
   }
 
   openLicenseModal() {
@@ -237,10 +311,10 @@ class PopupManager {
 
   async initializeAfterAuth() {
     try {
-      // 隐藏授权提示界面
-      const licenseRequired = document.querySelector('.license-required');
+      // 隐藏授权验证界面
+      const licenseRequired = document.getElementById('licenseRequired');
       if (licenseRequired) {
-        licenseRequired.remove();
+        licenseRequired.style.display = 'none';
       }
       
       // 显示主要内容

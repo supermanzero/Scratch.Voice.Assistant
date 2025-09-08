@@ -561,6 +561,7 @@
                                         创建时间: ${new Date(createdAt).toLocaleString()}
                                     </div>
                                     ${boundDevice ? `<div style="font-size: 11px; color: #888; margin-top: 2px;">绑定设备: ${boundDevice}</div>` : ''}
+                                    ${boundAt ? `<div style="font-size: 11px; color: #888; margin-top: 2px;">绑定时间: ${new Date(boundAt).toLocaleString()}</div>` : ''}
                                 </div>
                                 <div>
                                     <div class="license-status ${active ? 'status-active' : 'status-inactive'}">

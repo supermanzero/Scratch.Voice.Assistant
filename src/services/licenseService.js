@@ -266,11 +266,29 @@ class LicenseService {
         // 授权码未绑定，绑定到当前设备
         console.log('授权码未绑定，绑定到当前设备:', this.deviceUuid);
         
-        await licenseRef.update({
+        // 构建更新数据，保留原有字段
+        const updateData = {
           boundDevice: { stringValue: this.deviceUuid },
           boundAt: { timestampValue: new Date().toISOString() },
           active: { booleanValue: true }
-        });
+        };
+        
+        // 保留原有的createdAt字段（如果存在）
+        if (licenseData.createdAt) {
+          updateData.createdAt = licenseData.createdAt;
+        }
+        
+        // 保留原有的description字段（如果存在）
+        if (licenseData.description) {
+          updateData.description = licenseData.description;
+        }
+        
+        // 保留原有的testLicense字段（如果存在）
+        if (licenseData.testLicense) {
+          updateData.testLicense = licenseData.testLicense;
+        }
+        
+        await licenseRef.update(updateData);
         
         // 保存授权信息到本地存储
         const updatedLicenseData = {
