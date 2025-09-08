@@ -7,6 +7,13 @@ class PopupManager {
   }
 
   async init() {
+    // 检查授权状态
+    const isAuthorized = await this.checkLicenseStatus();
+    if (!isAuthorized) {
+      this.showLicenseRequired();
+      return;
+    }
+
     // 获取当前标签页信息
     await this.getCurrentTab();
 
@@ -24,6 +31,242 @@ class PopupManager {
 
     // 加载设置
     this.loadSettings();
+  }
+
+  async checkLicenseStatus() {
+    try {
+      // 动态加载授权服务
+      if (typeof window.licenseService === 'undefined') {
+        await this.loadLicenseService();
+      }
+      
+      const licenseService = window.licenseService;
+      if (!licenseService) {
+        console.error('授权服务未加载');
+        return false;
+      }
+      
+      console.log('开始检查授权状态...');
+      
+      // 智能检查授权状态（优先使用本地状态）
+      const status = await licenseService.checkLicenseStatus();
+      console.log('授权状态检查结果:', status);
+      
+      if (status.isAuthorized) {
+        console.log('授权验证通过');
+        if (status.localOnly) {
+          console.log('使用本地授权状态（未过期）');
+        } else if (status.cloudVerified) {
+          console.log('云端验证通过');
+        } else if (status.offline) {
+          console.log('离线模式，使用本地状态');
+        }
+        return true;
+      }
+      
+      // 如果本地没有授权信息，需要用户输入授权码
+      if (status.needsValidation) {
+        console.log('需要用户输入授权码:', status.message);
+      }
+      
+      console.log('需要用户输入授权码');
+      return false;
+    } catch (error) {
+      console.error('检查授权状态失败:', error);
+      return false;
+    }
+  }
+
+  async loadLicenseService() {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '../services/licenseService.js';
+      script.onload = () => {
+        console.log('授权服务脚本加载完成');
+        // 等待一下确保全局变量完全初始化
+        setTimeout(() => {
+          if (window.licenseService) {
+            console.log('授权服务全局变量已就绪');
+            resolve();
+          } else {
+            console.error('授权服务全局变量未就绪');
+            reject(new Error('授权服务全局变量未就绪'));
+          }
+        }, 100);
+      };
+      script.onerror = (error) => {
+        console.error('加载授权服务脚本失败:', error);
+        reject(error);
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  showLicenseRequired() {
+    // 隐藏主要内容
+    const mainContent = document.querySelector('.popup-main');
+    if (mainContent) {
+      mainContent.style.display = 'none';
+    }
+    
+    // 显示授权提示
+    const body = document.body;
+    body.innerHTML = `
+      <div class="license-required">
+        <div class="license-icon">🔑</div>
+        <h2>需要授权</h2>
+        <p>请先验证授权码以使用 Scratch Voice Assistant</p>
+        <button id="openLicenseModal" class="btn btn-primary">输入授权码</button>
+        <div class="help-text">
+          如果您没有授权码，请联系管理员获取
+        </div>
+      </div>
+    `;
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+      .license-required {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 400px;
+        padding: 40px 20px;
+        text-align: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+      .license-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+      }
+      .license-required h2 {
+        font-size: 24px;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+      .license-required p {
+        font-size: 16px;
+        margin-bottom: 24px;
+        opacity: 0.9;
+      }
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .btn-primary {
+        background: white;
+        color: #667eea;
+      }
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+      }
+      .help-text {
+        margin-top: 20px;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // 绑定事件
+    document.getElementById('openLicenseModal').addEventListener('click', () => {
+      this.openLicenseModal();
+    });
+  }
+
+  openLicenseModal() {
+    // 打开授权码输入窗口
+    chrome.windows.create({
+      url: chrome.runtime.getURL('src/popup/licenseModal.html'),
+      type: 'popup',
+      width: 600,
+      height: 500,
+      focused: true
+    }, (window) => {
+      if (chrome.runtime.lastError) {
+        console.error('打开授权窗口失败:', chrome.runtime.lastError);
+        alert('无法打开授权窗口，请检查浏览器设置');
+      } else {
+        console.log('授权窗口已打开');
+        // 监听窗口关闭事件
+        this.monitorLicenseWindow(window.id);
+      }
+    });
+  }
+
+  monitorLicenseWindow(windowId) {
+    // 监听窗口关闭事件
+    const checkWindow = () => {
+      chrome.windows.get(windowId, (window) => {
+        if (chrome.runtime.lastError) {
+          // 窗口已关闭，重新检查授权状态
+          this.checkLicenseAndReload();
+        } else {
+          // 窗口仍然存在，继续监听
+          setTimeout(checkWindow, 1000);
+        }
+      });
+    };
+    
+    setTimeout(checkWindow, 1000);
+  }
+
+  async checkLicenseAndReload() {
+    console.log('检查授权状态并重新加载...');
+    const isAuthorized = await this.checkLicenseStatus();
+    console.log('授权状态检查结果:', isAuthorized);
+    
+    if (isAuthorized) {
+      console.log('授权成功，重新初始化界面');
+      // 授权成功，重新初始化界面而不是重新加载页面
+      await this.initializeAfterAuth();
+    } else {
+      console.log('授权失败，保持当前状态');
+    }
+  }
+
+  async initializeAfterAuth() {
+    try {
+      // 隐藏授权提示界面
+      const licenseRequired = document.querySelector('.license-required');
+      if (licenseRequired) {
+        licenseRequired.remove();
+      }
+      
+      // 显示主要内容
+      const mainContent = document.querySelector('.popup-main');
+      if (mainContent) {
+        mainContent.style.display = 'block';
+      } else {
+        // 如果主要内容不存在，重新加载页面
+        location.reload();
+        return;
+      }
+      
+      // 重新初始化主要功能
+      await this.getCurrentTab();
+      this.checkConnectionStatus();
+      await this.loadTutorialsFromFirebase();
+      this.loadTutorialProgress();
+      this.bindEvents();
+      this.loadSettings();
+      
+      console.log('授权后界面初始化完成');
+    } catch (error) {
+      console.error('授权后初始化失败:', error);
+      // 如果初始化失败，回退到重新加载页面
+      location.reload();
+    }
   }
 
   async getCurrentTab() {
@@ -425,21 +668,26 @@ class PopupManager {
     const syncFirebaseBtn = document.getElementById('syncFirebaseBtn');
     const refreshTutorialsBtn = document.getElementById('refreshTutorialsBtn');
     
-    autoPlaySetting.addEventListener('change', () => this.saveSettings());
-    highlightSetting.addEventListener('change', () => this.saveSettings());
-    voiceEngineSetting.addEventListener('change', () => this.onVoiceEngineChange());
-    languageSetting.addEventListener('change', () => this.saveSettings());
-    voiceSelectSetting.addEventListener('change', () => this.saveSettings());
-    speechRateSetting.addEventListener('input', () => this.onSpeechRateChange());
-    speechVolumeSetting.addEventListener('input', () => this.onSpeechVolumeChange());
-    testVoiceBtn.addEventListener('click', () => this.testVoice());
-    syncFirebaseBtn.addEventListener('click', () => this.syncTutorialsToFirebase());
-    refreshTutorialsBtn.addEventListener('click', () => this.refreshTutorials());
+    // 安全地绑定事件，检查元素是否存在
+    if (autoPlaySetting) autoPlaySetting.addEventListener('change', () => this.saveSettings());
+    if (highlightSetting) highlightSetting.addEventListener('change', () => this.saveSettings());
+    if (voiceEngineSetting) voiceEngineSetting.addEventListener('change', () => this.onVoiceEngineChange());
+    if (languageSetting) languageSetting.addEventListener('change', () => this.saveSettings());
+    if (voiceSelectSetting) voiceSelectSetting.addEventListener('change', () => this.saveSettings());
+    if (speechRateSetting) speechRateSetting.addEventListener('input', () => this.onSpeechRateChange());
+    if (speechVolumeSetting) speechVolumeSetting.addEventListener('input', () => this.onSpeechVolumeChange());
+    if (testVoiceBtn) testVoiceBtn.addEventListener('click', () => this.testVoice());
+    if (syncFirebaseBtn) syncFirebaseBtn.addEventListener('click', () => this.syncTutorialsToFirebase());
+    if (refreshTutorialsBtn) refreshTutorialsBtn.addEventListener('click', () => this.refreshTutorials());
 
     // 底部链接事件
-    document.getElementById('helpLink').addEventListener('click', () => this.openHelp());
-    document.getElementById('feedbackLink').addEventListener('click', () => this.openFeedback());
-    document.getElementById('aboutLink').addEventListener('click', () => this.showAbout());
+    const helpLink = document.getElementById('helpLink');
+    const feedbackLink = document.getElementById('feedbackLink');
+    const aboutLink = document.getElementById('aboutLink');
+    
+    if (helpLink) helpLink.addEventListener('click', () => this.openHelp());
+    if (feedbackLink) feedbackLink.addEventListener('click', () => this.openFeedback());
+    if (aboutLink) aboutLink.addEventListener('click', () => this.showAbout());
 
     // 添加调试按钮事件（如果存在）
     const debugBtn = document.getElementById('debugBtn');

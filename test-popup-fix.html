@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试Popup修复</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .section h2 {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .result.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .result.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .result.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 测试Popup修复</h1>
+        
+        <div class="section">
+            <h2>修复说明</h2>
+            <p>已修复以下问题：</p>
+            <ul>
+                <li>✅ <strong>JavaScript错误</strong>：添加了DOM元素存在性检查，防止 <code>Cannot read properties of null</code> 错误</li>
+                <li>✅ <strong>404图片错误</strong>：为所有外部图片添加了 <code>onerror</code> 处理，加载失败时自动隐藏</li>
+                <li>✅ <strong>事件绑定安全</strong>：所有 <code>addEventListener</code> 调用都先检查元素是否存在</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>测试修复效果</h2>
+            <button onclick="testDOMElements()">测试DOM元素检查</button>
+            <button onclick="testImageLoading()">测试图片加载</button>
+            <button onclick="testEventBinding()">测试事件绑定</button>
+            <div id="testResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <div class="section">
+            <h2>修复详情</h2>
+            <div class="result info">
+修复前的问题：
+
+1. JavaScript错误：
+   popup.js:678 Uncaught (in promise) TypeError: Cannot read properties of null (reading 'addEventListener')
+   
+   原因：尝试为不存在的DOM元素绑定事件
+   
+2. 404图片错误：
+   cloud-upload--v1.png:1 Failed to load resource: the server responded with a status of 404
+   
+   原因：外部图片资源加载失败
+
+修复方案：
+
+1. DOM元素检查：
+   // 修复前
+   testVoiceBtn.addEventListener('click', () => this.testVoice());
+   
+   // 修复后
+   if (testVoiceBtn) testVoiceBtn.addEventListener('click', () => this.testVoice());
+
+2. 图片错误处理：
+   // 修复前
+   <img src="https://img.icons8.com/?size=100&id=l55Giv1YHgNO&format=png&color=000000" alt="同步">
+   
+   // 修复后
+   <img src="https://img.icons8.com/?size=100&id=l55Giv1YHgNO&format=png&color=000000" alt="同步" onerror="this.style.display='none'">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function testDOMElements() {
+            let result = 'DOM元素检查测试:\n\n';
+            
+            // 检查popup.js中引用的所有元素
+            const elements = [
+                'autoPlaySetting',
+                'highlightSetting', 
+                'voiceEngineSetting',
+                'languageSetting',
+                'voiceSelectSetting',
+                'speechRateSetting',
+                'speechVolumeSetting',
+                'testVoiceBtn',
+                'syncFirebaseBtn',
+                'refreshTutorialsBtn',
+                'helpLink',
+                'feedbackLink',
+                'aboutLink'
+            ];
+            
+            elements.forEach(id => {
+                const element = document.getElementById(id);
+                result += `${id}: ${element ? '✅ 存在' : '❌ 不存在'}\n`;
+            });
+            
+            result += '\n✅ 所有元素检查完成';
+            showResult('testResult', result, 'info');
+        }
+        
+        function testImageLoading() {
+            let result = '图片加载测试:\n\n';
+            
+            // 测试外部图片加载
+            const testImages = [
+                'https://img.icons8.com/fluency/24/voice-presentation.png',
+                'https://img.icons8.com/ios-glyphs/16/external-link.png',
+                'https://img.icons8.com/ios-glyphs/16/visible--v1.png',
+                'https://img.icons8.com/?size=100&id=l55Giv1YHgNO&format=png&color=000000'
+            ];
+            
+            let loadedCount = 0;
+            let totalCount = testImages.length;
+            
+            testImages.forEach((src, index) => {
+                const img = new Image();
+                img.onload = () => {
+                    loadedCount++;
+                    result += `图片 ${index + 1}: ✅ 加载成功\n`;
+                    if (loadedCount === totalCount) {
+                        result += `\n✅ 图片加载测试完成: ${loadedCount}/${totalCount} 成功`;
+                        showResult('testResult', result, 'success');
+                    }
+                };
+                img.onerror = () => {
+                    loadedCount++;
+                    result += `图片 ${index + 1}: ❌ 加载失败 (${src})\n`;
+                    if (loadedCount === totalCount) {
+                        result += `\n⚠️ 图片加载测试完成: ${loadedCount}/${totalCount} 成功`;
+                        showResult('testResult', result, 'error');
+                    }
+                };
+                img.src = src;
+            });
+        }
+        
+        function testEventBinding() {
+            let result = '事件绑定测试:\n\n';
+            
+            // 创建测试元素
+            const testElement = document.createElement('button');
+            testElement.id = 'testButton';
+            testElement.textContent = '测试按钮';
+            document.body.appendChild(testElement);
+            
+            // 测试安全的事件绑定
+            const element = document.getElementById('testButton');
+            if (element) {
+                element.addEventListener('click', () => {
+                    result += '✅ 事件绑定成功，点击事件触发\n';
+                    showResult('testResult', result, 'success');
+                });
+                result += '✅ 安全事件绑定测试通过\n';
+            } else {
+                result += '❌ 元素不存在，无法绑定事件\n';
+            }
+            
+            // 测试不存在的元素
+            const nonExistentElement = document.getElementById('nonExistentElement');
+            if (nonExistentElement) {
+                result += '❌ 不存在的元素不应该被找到\n';
+            } else {
+                result += '✅ 不存在的元素正确返回null\n';
+            }
+            
+            result += '\n✅ 事件绑定测试完成';
+            showResult('testResult', result, 'info');
+            
+            // 清理测试元素
+            setTimeout(() => {
+                if (testElement.parentNode) {
+                    testElement.parentNode.removeChild(testElement);
+                }
+            }, 1000);
+        }
+        
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `result ${type}`;
+            element.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

@@ -61,8 +61,16 @@
   
   "web_accessible_resources": [
     {
-      "resources": ["assets/css/*", "assets/icons/*"],
-      "matches": ["https://scratch.mit.edu/*","https://machinelearningforkids.co.uk/*"]
+      "resources": [
+        "assets/css/*", 
+        "assets/icons/*",
+        "src/popup/licenseModal.html",
+        "src/services/licenseService.js"
+      ],
+      "matches": [
+        "https://scratch.mit.edu/*",
+        "https://machinelearningforkids.co.uk/*"
+      ]
     }
   ]
 }

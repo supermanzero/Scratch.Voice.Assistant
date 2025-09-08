@@ -6,6 +6,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
     
+    // 允许读取和写入licenses集合
+    match /licenses/{licenseId} {
+      allow read, write: if true;
+    }
+    
     // 允许读取和写入其他集合（如果需要）
     match /{document=**} {
       allow read, write: if true;
