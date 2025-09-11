@@ -847,19 +847,19 @@ class ScratchVoiceAssistant {
           </div>
           
           <div class="player-controls">
-            <button class="control-btn" id="prevBtn" title="上一步">
+            <button class="control-btn" id="prevBtn" title="上一步 (快捷键：←)">
               ${this.getIcon('skip-back')}
             </button>
-            <button class="control-btn primary" id="playBtn" title="播放/暂停">
+            <button class="control-btn primary" id="playBtn" title="播放/暂停 (快捷键：/)">
               ${this.getIcon('play')}
             </button>
-            <button class="control-btn" id="nextBtn" title="下一步">
+            <button class="control-btn" id="nextBtn" title="下一步 (快捷键：→)">
               ${this.getIcon('skip-forward')}
             </button>
-            <button class="control-btn" id="repeatBtn" title="重复当前步骤">
+            <button class="control-btn" id="repeatBtn" title="重复当前步骤 (快捷键：R)">
               ${this.getIcon('rotate-ccw')}
             </button>
-            <button class="control-btn" id="settingsBtn" title="设置">
+            <button class="control-btn" id="settingsBtn" title="设置 (快捷键：S)">
               ${this.getIcon('settings')}
             </button>
           </div>
@@ -1359,17 +1359,17 @@ class ScratchVoiceAssistant {
       // 显示倒计时
       playBtn.innerHTML = `<span class="countdown-text">${countdown}</span>`;
       playBtn.classList.add('countdown-mode');
-      playBtn.title = '点击取消自动播放';
+      playBtn.title = '点击取消自动播放 (/)';
     } else if (this.isPlaying) {
       // 播放中，显示暂停图标
       playBtn.innerHTML = this.getIcon('pause');
       playBtn.classList.remove('countdown-mode');
-      playBtn.title = '暂停';
+      playBtn.title = '暂停 (/)';
     } else {
       // 未播放，显示播放图标
       playBtn.innerHTML = this.getIcon('play');
       playBtn.classList.remove('countdown-mode');
-      playBtn.title = '播放/暂停';
+      playBtn.title = '播放/暂停 (/)';
     }
   }
 
