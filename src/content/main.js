@@ -847,19 +847,19 @@ class ScratchVoiceAssistant {
           </div>
           
           <div class="player-controls">
-            <button class="control-btn" id="prevBtn" title="上一步">
+            <button class="control-btn" id="prevBtn" title="上一步 (快捷键：←)">
               ${this.getIcon('skip-back')}
             </button>
-            <button class="control-btn primary" id="playBtn" title="播放/暂停">
+            <button class="control-btn primary" id="playBtn" title="播放/暂停 (快捷键：/)">
               ${this.getIcon('play')}
             </button>
-            <button class="control-btn" id="nextBtn" title="下一步">
+            <button class="control-btn" id="nextBtn" title="下一步 (快捷键：→)">
               ${this.getIcon('skip-forward')}
             </button>
-            <button class="control-btn" id="repeatBtn" title="重复当前步骤">
+            <button class="control-btn" id="repeatBtn" title="重复当前步骤 (快捷键：R)">
               ${this.getIcon('rotate-ccw')}
             </button>
-            <button class="control-btn" id="settingsBtn" title="设置">
+            <button class="control-btn" id="settingsBtn" title="设置 (快捷键：S)">
               ${this.getIcon('settings')}
             </button>
           </div>
@@ -943,6 +943,9 @@ class ScratchVoiceAssistant {
     nextBtn.addEventListener('click', () => this.nextStep());
     repeatBtn.addEventListener('click', () => this.repeatStep());
     settingsBtn.addEventListener('click', () => this.toggleSettings());
+
+    // 添加键盘快捷键监听
+    this.setupKeyboardShortcuts();
 
     // 教程选择
     const tutorialSelect = this.widget.querySelector('#tutorialSelect');
@@ -1398,17 +1401,17 @@ class ScratchVoiceAssistant {
       // 显示倒计时
       playBtn.innerHTML = `<span class="countdown-text">${countdown}</span>`;
       playBtn.classList.add('countdown-mode');
-      playBtn.title = '点击取消自动播放';
+      playBtn.title = '点击取消自动播放 (/)';
     } else if (this.isPlaying) {
       // 播放中，显示暂停图标
       playBtn.innerHTML = this.getIcon('pause');
       playBtn.classList.remove('countdown-mode');
-      playBtn.title = '暂停';
+      playBtn.title = '暂停 (/)';
     } else {
       // 未播放，显示播放图标
       playBtn.innerHTML = this.getIcon('play');
       playBtn.classList.remove('countdown-mode');
-      playBtn.title = '播放/暂停';
+      playBtn.title = '播放/暂停 (/)';
     }
   }
 
@@ -2172,6 +2175,91 @@ class ScratchVoiceAssistant {
     });
     
     console.log('存储监听器已设置');
+  }
+
+  // 设置键盘快捷键
+  setupKeyboardShortcuts() {
+    // 确保只设置一次键盘监听器
+    if (this.keyboardListenerSetup) {
+      console.log('键盘监听器已设置，跳过重复设置');
+      return;
+    }
+
+    console.log('设置键盘快捷键监听器...');
+    
+    document.addEventListener('keydown', (e) => {
+      // 检查是否在输入框中，如果是则不处理快捷键
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.contentEditable === 'true' ||
+        activeElement.closest('[contenteditable="true"]')
+      );
+
+      // 如果在输入框中，不处理快捷键
+      if (isInputFocused) {
+        return;
+      }
+
+      // 处理 '/' 键 - 播放/暂停
+      if (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('检测到 / 键，切换播放状态');
+        this.togglePlay();
+        return;
+      }
+
+      // 处理方向键 - 上一步/下一步
+      if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('检测到左箭头键，上一步');
+        this.previousStep();
+        return;
+      }
+
+      if (e.key === 'ArrowRight' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('检测到右箭头键，下一步');
+        this.nextStep();
+        return;
+      }
+
+      // 处理 'r' 键 - 重复当前步骤
+      if (e.key === 'r' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('检测到 r 键，重复当前步骤');
+        this.repeatStep();
+        return;
+      }
+
+      // 处理 's' 键 - 切换设置面板
+      if (e.key === 's' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('检测到 s 键，切换设置面板');
+        this.toggleSettings();
+        return;
+      }
+    });
+
+    this.keyboardListenerSetup = true;
+    console.log('键盘快捷键监听器已设置');
+    console.log('可用快捷键:');
+    console.log('  / - 播放/暂停');
+    console.log('  ← - 上一步');
+    console.log('  → - 下一步');
+    console.log('  r - 重复当前步骤');
+    console.log('  s - 切换设置面板');
   }
 
   // 切换浮窗显示/隐藏
