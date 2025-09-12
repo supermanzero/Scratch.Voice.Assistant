@@ -46,6 +46,41 @@ async function getTutorialsFromFirebase() {
   }
 }
 
+// 从Firebase获取套餐数据
+async function getPackagesFromFirebase() {
+  try {
+    // 使用Firebase REST API获取数据
+    const projectId = firebaseConfig.projectId;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/packages`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Firebase请求失败: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // 转换Firestore格式到我们的格式
+    const packages = {};
+    if (data.documents) {
+      data.documents.forEach(doc => {
+        const packageId = doc.name.split('/').pop();
+        const packageData = convertFirestoreDocument(doc);
+        packages[packageId] = {
+          id: packageId,
+          ...packageData
+        };
+      });
+    }
+    
+    console.log('从Firebase获取套餐数据:', packages);
+    return packages;
+  } catch (error) {
+    console.error('从Firebase获取套餐数据失败:', error);
+    throw error;
+  }
+}
+
 // 转换Firestore文档格式
 function convertFirestoreDocument(doc) {
   const fields = doc.fields || {};
@@ -102,6 +137,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleGetTutorials(sendResponse);
       return true; // 保持消息通道开放
       
+    case 'getPackages':
+      handleGetPackages(sendResponse);
+      return true; // 保持消息通道开放
+      
     case 'saveTutorialProgress':
       handleSaveTutorialProgress(request.data, sendResponse);
       return true;
@@ -137,6 +176,25 @@ async function handleGetTutorials(sendResponse) {
       sendResponse({ success: true, data: tutorials });
     } catch (fallbackError) {
       console.error('本地教程数据也失败:', fallbackError);
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+}
+
+// 获取套餐数据
+async function handleGetPackages(sendResponse) {
+  try {
+    // 从Firebase获取套餐数据
+    const packages = await getPackagesFromFirebase();
+    sendResponse({ success: true, data: packages });
+  } catch (error) {
+    console.error('获取套餐数据失败:', error);
+    // 如果Firebase失败，使用本地数据作为回退
+    try {
+      const packages = await loadLocalPackages();
+      sendResponse({ success: true, data: packages });
+    } catch (fallbackError) {
+      console.error('本地套餐数据也失败:', fallbackError);
       sendResponse({ success: false, error: error.message });
     }
   }
@@ -266,6 +324,44 @@ async function loadLocalTutorials() {
           highlight: '.green-flag'
         }
       ]
+    }
+  };
+}
+
+// 加载本地套餐数据
+async function loadLocalPackages() {
+  return {
+    beginner: {
+      id: 'beginner',
+      name: '初学者套餐',
+      price: 0,
+      description: '适合初学者的基础课程套餐',
+      tutorialCount: 3,
+      tutorialIds: ['motion', 'looks', 'events'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    
+    intermediate: {
+      id: 'intermediate',
+      name: '进阶套餐',
+      price: 29.9,
+      description: '适合有一定基础的学习者',
+      tutorialCount: 5,
+      tutorialIds: ['motion', 'looks', 'events', 'control', 'sensing'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    
+    advanced: {
+      id: 'advanced',
+      name: '高级套餐',
+      price: 59.9,
+      description: '适合高级用户的全套课程',
+      tutorialCount: 8,
+      tutorialIds: ['motion', 'looks', 'events', 'control', 'sensing', 'operators', 'variables', 'myBlocks'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }
   };
 }

@@ -20,8 +20,8 @@ class PopupManager {
     // 检查连接状态
     this.checkConnectionStatus();
 
-    // 从Firebase加载教程信息
-    await this.loadTutorialsFromFirebase();
+    // 从Firebase加载套餐信息
+    await this.loadPackagesFromFirebase();
 
     // 加载教程进度
     this.loadTutorialProgress();
@@ -330,7 +330,7 @@ class PopupManager {
       // 重新初始化主要功能
       await this.getCurrentTab();
       this.checkConnectionStatus();
-      await this.loadTutorialsFromFirebase();
+      await this.loadPackagesFromFirebase();
       this.loadTutorialProgress();
       this.bindEvents();
       this.loadSettings();
@@ -532,83 +532,88 @@ class PopupManager {
     }
   }
 
-  // 从Firebase加载教程信息
-  async loadTutorialsFromFirebase() {
-    const tutorialList = document.getElementById('tutorialList');
+  // 从Firebase加载套餐信息
+  async loadPackagesFromFirebase() {
+    const packageList = document.getElementById('packageList');
     
     try {
       // 显示加载状态
-      tutorialList.innerHTML = `
-        <div class="loading-tutorials">
+      packageList.innerHTML = `
+        <div class="loading-packages">
           <div class="loading-spinner"></div>
-          <p>正在从Firebase加载教程...</p>
+          <p>正在从Firebase加载套餐...</p>
         </div>
       `;
 
-      // 通过background script获取教程数据
+      // 通过background script获取套餐数据
       const response = await chrome.runtime.sendMessage({
-        action: 'getTutorials'
+        action: 'getPackages'
       });
 
-      if (response.success && response.data) {
-        console.log('从Firebase获取教程数据成功:', response.data);
-        this.tutorials = response.data;
-        this.renderTutorialList(response.data);
+      if (response && response.success && response.data) {
+        console.log('从Firebase获取套餐数据成功:', response.data);
+        this.packages = response.data;
+        this.renderPackageList(response.data);
       } else {
-        throw new Error(response.error || '获取教程数据失败');
+        throw new Error(response?.error || '获取套餐数据失败：Background script 无响应');
       }
     } catch (error) {
-      console.error('从Firebase加载教程失败:', error);
-      this.showTutorialError(error.message);
+      console.error('从Firebase加载套餐失败:', error);
+      this.showPackageError(error.message);
     }
   }
 
-  // 渲染教程列表
-  renderTutorialList(tutorials) {
-    const tutorialList = document.getElementById('tutorialList');
+  // 渲染套餐列表
+  async renderPackageList(packages) {
+    const packageList = document.getElementById('packageList');
     
-    if (!tutorials || Object.keys(tutorials).length === 0) {
-      tutorialList.innerHTML = `
-        <div class="tutorial-error">
-          <p>暂无可用教程</p>
+    if (!packages || Object.keys(packages).length === 0) {
+      packageList.innerHTML = `
+        <div class="package-error">
+          <p>暂无可用套餐</p>
         </div>
       `;
       return;
     }
 
-    const tutorialKeys = Object.keys(tutorials);
-    tutorialList.innerHTML = '';
+    // 获取当前选中的套餐
+    const result = await chrome.storage.local.get(['currentPackage']);
+    const currentPackageId = result.currentPackage;
 
-    tutorialKeys.forEach((tutorialId, index) => {
-      const tutorial = tutorials[tutorialId];
-      const tutorialItem = this.createTutorialItem(tutorialId, tutorial, index);
-      tutorialList.appendChild(tutorialItem);
+    const packageKeys = Object.keys(packages);
+    packageList.innerHTML = '';
+
+    packageKeys.forEach((packageId, index) => {
+      const packageData = packages[packageId];
+      const isSelected = packageId === currentPackageId;
+      const packageItem = this.createPackageItem(packageId, packageData, index, isSelected);
+      packageList.appendChild(packageItem);
     });
   }
 
-  // 创建教程项
-  createTutorialItem(tutorialId, tutorial, index) {
+  // 创建套餐项
+  createPackageItem(packageId, packageData, index, isSelected = false) {
     const item = document.createElement('div');
-    item.className = 'tutorial-item';
-    item.setAttribute('data-tutorial-id', tutorialId);
+    item.className = `package-item${isSelected ? ' selected' : ''}`;
+    item.setAttribute('data-package-id', packageId);
 
-    const difficultyClass = this.getDifficultyClass(tutorial.difficulty || 'beginner');
-    const stepCount = tutorial.steps ? tutorial.steps.length : 0;
+    const tutorialCount = packageData.tutorialIds ? packageData.tutorialIds.length : 0;
+    const price = packageData.price || 0;
+    const buttonText = isSelected ? '已选中' : '选择套餐';
 
     item.innerHTML = `
-      <div class="tutorial-info">
-        <h4>${tutorial.title || '未命名教程'}</h4>
-        <p>${tutorial.description || '暂无描述'}</p>
-        <div class="tutorial-meta">
-          <span class="difficulty ${difficultyClass}">${this.getDifficultyText(tutorial.difficulty || 'beginner')}</span>
-          <span class="duration">${tutorial.duration || '未知'}</span>
+      <div class="package-info">
+        <h4>${packageData.name || '未命名套餐'}</h4>
+        <p>${packageData.description || '暂无描述'}</p>
+        <div class="package-meta">
+          <span class="tutorial-count">${tutorialCount} 个课程</span>
+          <span class="price">¥${price}</span>
         </div>
       </div>
-      <div class="tutorial-progress">
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: 0%"></div>
-        </div>
-        <span class="progress-text">0/${stepCount}</span>
+      <div class="package-actions">
+        <button class="select-package-btn" data-package-id="${packageId}">
+          ${buttonText}
+        </button>
       </div>
     `;
 
@@ -635,12 +640,12 @@ class PopupManager {
     return difficultyMap[difficulty] || '初级';
   }
 
-  // 显示教程加载错误
-  showTutorialError(errorMessage) {
-    const tutorialList = document.getElementById('tutorialList');
-    tutorialList.innerHTML = `
-      <div class="tutorial-error">
-        <p>加载教程失败: ${errorMessage}</p>
+  // 显示套餐加载错误
+  showPackageError(errorMessage) {
+    const packageList = document.getElementById('packageList');
+    packageList.innerHTML = `
+      <div class="package-error">
+        <p>加载套餐失败: ${errorMessage}</p>
         <button class="retry-button" onclick="location.reload()">重试</button>
       </div>
     `;
@@ -693,7 +698,7 @@ class PopupManager {
         action: 'getTutorials'
       });
       
-      if (response.success && response.data[tutorialId]) {
+      if (response && response.success && response.data && response.data[tutorialId]) {
         return response.data[tutorialId].steps ? response.data[tutorialId].steps.length : 0;
       }
     } catch (error) {
@@ -718,14 +723,14 @@ class PopupManager {
     const toggleAssistantBtn = document.getElementById('toggleAssistantBtn');
     toggleAssistantBtn.addEventListener('click', () => this.toggleAssistant());
 
-    // 教程项点击事件 - 使用事件委托处理动态生成的元素
-    const tutorialList = document.getElementById('tutorialList');
-    tutorialList.addEventListener('click', (e) => {
-      const tutorialItem = e.target.closest('.tutorial-item');
-      if (tutorialItem) {
-        const tutorialId = tutorialItem.getAttribute('data-tutorial-id');
-        if (tutorialId) {
-          this.selectTutorialById(tutorialId);
+    // 套餐项点击事件 - 使用事件委托处理动态生成的元素
+    const packageList = document.getElementById('packageList');
+    packageList.addEventListener('click', (e) => {
+      const selectBtn = e.target.closest('.select-package-btn');
+      if (selectBtn) {
+        const packageId = selectBtn.getAttribute('data-package-id');
+        if (packageId) {
+          this.selectPackageById(packageId);
         }
       }
     });
@@ -854,33 +859,40 @@ class PopupManager {
     }
   }
 
-  // 通过教程ID选择教程
-  async selectTutorialById(tutorialId) {
+  // 通过套餐ID选择套餐
+  async selectPackageById(packageId) {
     try {
       if (!this.currentTab || !this.isScratchEditor(this.currentTab.url)) {
         alert('请先打开 Scratch 编辑器页面');
         return;
       }
 
-      if (!this.tutorials || !this.tutorials[tutorialId]) {
-        alert('教程不存在或未加载');
+      if (!this.packages || !this.packages[packageId]) {
+        alert('套餐不存在或未加载');
         return;
       }
 
-      // 保存教程选择到存储，用于同步
+      // 保存套餐选择到存储，用于同步
       await chrome.storage.local.set({ 
-        currentTutorial: tutorialId,
+        currentPackage: packageId,
+        currentTutorial: null,
         currentStepIndex: 0 
       });
 
+      // 重新渲染套餐列表以显示选中状态
+      await this.renderPackageList(this.packages);
+
       await chrome.tabs.sendMessage(this.currentTab.id, {
-        action: 'selectTutorial',
-        tutorialId: tutorialId
+        action: 'selectPackage',
+        packageId: packageId
       });
 
-      window.close();
+      // 延迟关闭窗口，让用户看到选中状态
+      setTimeout(() => {
+        window.close();
+      }, 500);
     } catch (error) {
-      console.error('选择教程失败:', error);
+      console.error('选择套餐失败:', error);
       alert('无法连接到助手，请刷新页面后重试');
     }
   }
@@ -1358,8 +1370,8 @@ class PopupManager {
         }
       });
 
-      if (!response.success) {
-        throw new Error(response.error || '百度TTS 请求失败');
+      if (!response || !response.success) {
+        throw new Error(response?.error || '百度TTS 请求失败：Background script 无响应');
       }
 
       const audio = new Audio();
@@ -1405,7 +1417,7 @@ class PopupManager {
         tutorials: defaultTutorials
       });
 
-      if (response.success) {
+      if (response && response.success) {
         // 显示成功消息
         syncBtn.innerHTML = '<img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/checkmark--v1.png" alt="成功">同步成功';
         syncBtn.style.background = '#28a745';

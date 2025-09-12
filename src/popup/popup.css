@@ -249,6 +249,121 @@ body {
   min-width: 30px;
 }
 
+/* 套餐列表 */
+.packages-section {
+  margin-bottom: 20px;
+}
+
+.package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.package-item {
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+.package-item:hover {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.package-item.selected {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.05);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.1);
+}
+
+.package-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary));
+  border-radius: 8px 0 0 8px;
+}
+
+.package-info h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: hsl(var(--primary));
+}
+
+.package-info p {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 8px;
+}
+
+.package-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-count {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.price {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--primary));
+}
+
+.package-actions {
+  display: flex;
+  align-items: center;
+}
+
+.select-package-btn {
+  padding: 6px 12px;
+  border: 1px solid hsl(var(--primary));
+  border-radius: 6px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.select-package-btn:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.select-package-btn:active {
+  transform: translateY(0);
+}
+
+.package-item.selected .select-package-btn {
+  background: hsl(var(--success));
+  border-color: hsl(var(--success));
+  color: white;
+}
+
+.package-item.selected .select-package-btn:hover {
+  background: hsl(var(--success) / 0.9);
+}
+
 /* 设置部分 */
 .settings-section {
   margin-bottom: 20px;
@@ -521,7 +636,7 @@ body {
 }
 
 /* 加载动画样式 */
-.loading-tutorials {
+.loading-tutorials, .loading-packages {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -545,14 +660,14 @@ body {
   100% { transform: rotate(360deg); }
 }
 
-.loading-tutorials p {
+.loading-tutorials p, .loading-packages p {
   margin: 0;
   font-size: 14px;
   text-align: center;
 }
 
 /* 错误状态样式 */
-.tutorial-error {
+.tutorial-error, .package-error {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -562,7 +677,7 @@ body {
   text-align: center;
 }
 
-.tutorial-error p {
+.tutorial-error p, .package-error p {
   margin: 0 0 16px 0;
   font-size: 14px;
 }

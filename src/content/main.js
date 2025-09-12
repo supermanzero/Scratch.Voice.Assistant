@@ -202,8 +202,8 @@ class ScratchVoiceAssistant {
             settings: this.settings
           });
 
-          if (!response.success) {
-            throw new Error(response.error || '百度TTS 预加载失败');
+          if (!response || !response.success) {
+            throw new Error(response?.error || '百度TTS 预加载失败：Background script 无响应');
           }
 
           // 创建预加载的音频对象
@@ -271,8 +271,8 @@ class ScratchVoiceAssistant {
             settings: this.settings
           });
 
-          if (!response.success) {
-            throw new Error(response.error || 'Google TTS 预加载失败');
+          if (!response || !response.success) {
+            throw new Error(response?.error || 'Google TTS 预加载失败：Background script 无响应');
           }
 
           // 创建预加载的音频对象
@@ -514,8 +514,8 @@ class ScratchVoiceAssistant {
             settings: this.settings
           });
 
-          if (!response.success) {
-            throw new Error(response.error || 'Google TTS 请求失败');
+          if (!response || !response.success) {
+            throw new Error(response?.error || 'Google TTS 请求失败：Background script 无响应');
           }
 
           this.currentAudio = new Audio();
@@ -573,8 +573,8 @@ class ScratchVoiceAssistant {
             settings: this.settings
           });
 
-          if (!response.success) {
-            throw new Error(response.error || '百度TTS 请求失败');
+          if (!response || !response.success) {
+            throw new Error(response?.error || '百度TTS 请求失败：Background script 无响应');
           }
 
           this.currentAudio = new Audio();
@@ -987,75 +987,30 @@ class ScratchVoiceAssistant {
   }
 
   async loadTutorials() {
-    let tutorials;
-    
-    try {
-      // 尝试从Firebase获取教程数据
-      console.log('尝试从Firebase获取教程数据...');
-      tutorials = await this.getTutorialsFromFirebase();
-      console.log('从Firebase获取教程数据成功:', tutorials);
-    } catch (error) {
-      console.warn('从Firebase获取教程数据失败，使用默认数据:', error);
-      // 使用默认教程数据作为回退
-      tutorials = {
-        'motion': {
-          title: '运动积木教程',
-          steps: [
-            { text: '欢迎学习 Scratch 运动积木！让我们开始创建一个简单的动画。', action: 'intro' },
-            { text: '首先，从积木面板中找到运动分类，它通常是蓝色的。', action: 'find-motion' },
-            { text: '拖拽"移动10步"积木到脚本区域。', action: 'drag-move' },
-            { text: '点击这个积木，看看角色是否移动了。', action: 'test-move' },
-            { text: '很好！现在尝试修改步数，比如改成50步。', action: 'modify-steps' }
-          ]
-        },
-        'looks': {
-          title: '外观积木教程',
-          steps: [
-            { text: '现在学习外观积木，让角色更有趣！', action: 'intro' },
-            { text: '找到紫色的外观积木分类。', action: 'find-looks' },
-            { text: '拖拽"说Hello!持续2秒"积木到脚本区域。', action: 'drag-say' },
-            { text: '点击积木，角色会说话！', action: 'test-say' },
-            { text: '尝试修改文字内容，让角色说不同的话。', action: 'modify-text' }
-          ]
-        },
-        'events': {
-          title: '事件积木教程',
-          steps: [
-            { text: '学习事件积木，让程序响应用户操作！', action: 'intro' },
-            { text: '找到黄色的事件积木分类。', action: 'find-events' },
-            { text: '拖拽"当绿旗被点击"积木到脚本区域。', action: 'drag-flag' },
-            { text: '这是程序的开始积木，点击绿旗试试。', action: 'test-flag' },
-            { text: '现在可以在下面连接其他积木了！', action: 'connect-blocks' }
-          ]
-        },
-        'control': {
-          title: '控制积木教程',
-          steps: [
-            { text: '学习控制积木，让程序更智能！', action: 'intro' },
-            { text: '找到橙色的控制积木分类。', action: 'find-control' },
-            { text: '拖拽"重复10次"积木到脚本区域。', action: 'drag-repeat' },
-            { text: '在重复积木内放入其他积木。', action: 'add-inside' },
-            { text: '点击运行，看看重复效果！', action: 'test-repeat' }
-          ]
-        }
-      };
-    }
-
-    // 保存教程数据到实例
-    this.tutorials = tutorials;
-
+    // 初始化时只显示默认选项，等待套餐选择后再加载课程
     const select = this.widget.querySelector('#tutorialSelect');
     if (!select) return;
 
-    // 清空现有选项（保留默认选项）
-    select.innerHTML = '<option value="">选择教程...</option>';
+    select.innerHTML = '<option value="">请先选择套餐...</option>';
+  }
 
-    Object.keys(tutorials).forEach(key => {
-      const option = document.createElement('option');
-      option.value = key;
-      option.textContent = tutorials[key].title;
-      select.appendChild(option);
-    });
+  // 从Firebase获取套餐数据
+  async getPackagesFromFirebase() {
+    try {
+      // 通过background script获取套餐数据
+      const response = await chrome.runtime.sendMessage({
+        action: 'getPackages'
+      });
+      
+      if (response && response.success) {
+        return response.data;
+      } else {
+        throw new Error(response?.error || '获取套餐数据失败：Background script 无响应');
+      }
+    } catch (error) {
+      console.error('从Firebase获取套餐数据失败:', error);
+      throw error;
+    }
   }
 
   // 从Firebase获取教程数据
@@ -1066,10 +1021,10 @@ class ScratchVoiceAssistant {
         action: 'getTutorials'
       });
       
-      if (response.success) {
+      if (response && response.success) {
         return response.data;
       } else {
-        throw new Error(response.error || '获取教程数据失败');
+        throw new Error(response?.error || '获取教程数据失败：Background script 无响应');
       }
     } catch (error) {
       console.error('从Firebase获取教程数据失败:', error);
@@ -1083,14 +1038,9 @@ class ScratchVoiceAssistant {
       console.log('刷新教程数据...');
       await this.loadTutorials();
       
-      // 如果当前有选中的教程，保持选中状态
-      if (this.currentTutorial) {
-        const currentTutorialKey = Object.keys(this.tutorials).find(key => 
-          this.tutorials[key] === this.currentTutorial
-        );
-        if (currentTutorialKey) {
-          this.selectTutorial(currentTutorialKey);
-        }
+      // 如果当前有选中的套餐，重新加载该套餐的课程
+      if (this.currentPackage) {
+        await this.loadTutorialsForPackage(this.currentPackage);
       }
       
       console.log('教程数据刷新完成');
@@ -1102,23 +1052,114 @@ class ScratchVoiceAssistant {
   // 恢复上次选择的教程
   async restoreLastTutorial() {
     try {
-      const result = await chrome.storage.local.get(['currentTutorial', 'currentStepIndex']);
-      if (result.currentTutorial && this.tutorials[result.currentTutorial]) {
-        console.log('恢复上次教程:', result.currentTutorial, '步骤:', result.currentStepIndex);
+      const result = await chrome.storage.local.get(['currentPackage', 'currentTutorial', 'currentStepIndex']);
+      
+      // 如果有选中的套餐，先加载该套餐的课程
+      if (result.currentPackage) {
+        console.log('恢复上次套餐:', result.currentPackage);
+        await this.loadTutorialsForPackage(result.currentPackage);
         
-        this.currentTutorial = this.tutorials[result.currentTutorial];
-        this.currentStepIndex = result.currentStepIndex || 0;
-        
-        // 更新下拉选择
-        const tutorialSelect = this.widget.querySelector('#tutorialSelect');
-        if (tutorialSelect) {
-          tutorialSelect.value = result.currentTutorial;
+        // 然后恢复选中的教程
+        if (result.currentTutorial && this.tutorials && this.tutorials[result.currentTutorial]) {
+          console.log('恢复上次教程:', result.currentTutorial, '步骤:', result.currentStepIndex);
+          
+          this.currentTutorial = this.tutorials[result.currentTutorial];
+          this.currentStepIndex = result.currentStepIndex || 0;
+          
+          // 更新下拉选择
+          const tutorialSelect = this.widget.querySelector('#tutorialSelect');
+          if (tutorialSelect) {
+            tutorialSelect.value = result.currentTutorial;
+          }
+          
+          this.updateUI();
         }
-        
-        this.updateUI();
       }
     } catch (error) {
       console.log('恢复教程状态失败:', error);
+    }
+  }
+
+  // 为指定套餐加载课程
+  async loadTutorialsForPackage(packageId) {
+    try {
+      console.log('为套餐加载课程:', packageId);
+      
+      // 获取套餐数据
+      const packages = await this.getPackagesFromFirebase();
+      const packageData = packages[packageId];
+      
+      if (!packageData || !packageData.tutorialIds) {
+        console.warn('套餐数据无效或没有课程ID');
+        return;
+      }
+
+      // 获取所有教程数据
+      const allTutorials = await this.getTutorialsFromFirebase();
+      
+      // 筛选出套餐中的教程
+      this.tutorials = {};
+      packageData.tutorialIds.forEach(tutorialId => {
+        if (allTutorials[tutorialId]) {
+          this.tutorials[tutorialId] = allTutorials[tutorialId];
+        }
+      });
+
+      // 更新下拉选择
+      const select = this.widget.querySelector('#tutorialSelect');
+      if (!select) return;
+
+      // 清空现有选项
+      select.innerHTML = '<option value="">选择课程...</option>';
+
+      // 添加套餐中的课程选项
+      Object.keys(this.tutorials).forEach(key => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = this.tutorials[key].title;
+        select.appendChild(option);
+      });
+
+      console.log('套餐课程加载完成:', Object.keys(this.tutorials));
+    } catch (error) {
+      console.error('加载套餐课程失败:', error);
+    }
+  }
+
+  // 选择套餐
+  async selectPackage(packageId) {
+    try {
+      console.log('选择套餐:', packageId);
+      
+      // 保存当前选择的套餐
+      this.currentPackage = packageId;
+      
+      // 加载该套餐的课程
+      await this.loadTutorialsForPackage(packageId);
+      
+      // 清空当前教程选择
+      this.currentTutorial = null;
+      this.currentStepIndex = 0;
+      
+      // 清除之前的自动播放定时器
+      this.clearAutoPlayTimer();
+      
+      // 保存当前选择的套餐到存储
+      try {
+        chrome.storage.local.set({ 
+          currentPackage: packageId,
+          currentTutorial: null,
+          currentStepIndex: 0 
+        });
+      } catch (error) {
+        console.log('保存套餐状态失败:', error);
+      }
+      
+      this.updateUI();
+      
+      console.log('套餐选择完成:', packageId);
+    } catch (error) {
+      console.error('选择套餐失败:', error);
     }
   }
 
@@ -1150,6 +1191,7 @@ class ScratchVoiceAssistant {
     // 保存当前选择的教程到存储，以便其他组件可以访问
     try {
       chrome.storage.local.set({ 
+        currentPackage: this.currentPackage,
         currentTutorial: tutorialKey,
         currentStepIndex: this.currentStepIndex 
       });
@@ -2024,6 +2066,12 @@ class ScratchVoiceAssistant {
               console.log('Widget不存在，重新创建...');
               this.createWidget();
             }
+            sendResponse({ success: true });
+            return true;
+
+          case 'selectPackage':
+            console.log('选择套餐:', request.packageId);
+            this.selectPackage(request.packageId);
             sendResponse({ success: true });
             return true;
 
