@@ -541,7 +541,7 @@ class PopupManager {
       packageList.innerHTML = `
         <div class="loading-packages">
           <div class="loading-spinner"></div>
-          <p>正在从Firebase加载套餐...</p>
+          <p>正在加载套餐...</p>
         </div>
       `;
 
@@ -598,17 +598,12 @@ class PopupManager {
     item.setAttribute('data-package-id', packageId);
 
     const tutorialCount = packageData.tutorialIds ? packageData.tutorialIds.length : 0;
-    const price = packageData.price || 0;
     const buttonText = isSelected ? '已选中' : '选择套餐';
 
     item.innerHTML = `
       <div class="package-info">
-        <h4>${packageData.name || '未命名套餐'}</h4>
+        <h4>${packageData.name || '未命名套餐'} <span class="tutorial-count">(${tutorialCount} 个课程)</span></h4>
         <p>${packageData.description || '暂无描述'}</p>
-        <div class="package-meta">
-          <span class="tutorial-count">${tutorialCount} 个课程</span>
-          <span class="price">¥${price}</span>
-        </div>
       </div>
       <div class="package-actions">
         <button class="select-package-btn" data-package-id="${packageId}">
