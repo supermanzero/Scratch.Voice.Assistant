@@ -950,25 +950,19 @@ class ScratchVoiceAssistant {
         return result.baiduAccessToken;
       }
       
-      // 获取新的token（通过本地代理服务）
-      const tokenUrl = 'http://localhost:8000/proxy/baidu-token';
-      console.log('获取新的百度API token，通过代理服务:', tokenUrl);
-      
       // 百度API密钥
       const AK = "FeNVdlSqSTt9IO3Bz4SCDiVj";
       const SK = "NL9bpxsOt7pxf1m3v43G5vPD5CIjoSFo";
       
-      // 构建POST数据
-      const formData = new URLSearchParams();
-      formData.append('ak', AK);
-      formData.append('sk', SK);
+      // 直接调用百度API获取token
+      const tokenUrl = `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${AK}&client_secret=${SK}`;
+      console.log('获取新的百度API token，直接调用百度API');
       
       const response = await fetch(tokenUrl, { 
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: formData
+          'Content-Type': 'application/json'
+        }
       });
       console.log('百度API token响应状态:', response.status, response.statusText);
       
@@ -1004,7 +998,7 @@ class ScratchVoiceAssistant {
     }
   }
 
-  // 纯粹的百度TTS播放方法 - 直接调用代理服务器
+  // 纯粹的百度TTS播放方法 - 直接调用百度API
   async speakWithBaiduDirect(text, onStart, onEnd, onError) {
     console.log('=== speakWithBaiduDirect 纯播放方法 ===');
     console.log('调用百度TTS，设置:', this.ttsService.settings);
@@ -1038,8 +1032,8 @@ class ScratchVoiceAssistant {
         formData.append(key, requestData[key]);
       });
       
-      // 5. 直接调用代理服务器
-      const response = await fetch('http://localhost:8000/proxy/baidu-tts', {
+      // 5. 直接调用百度TTS API
+      const response = await fetch('https://tsn.baidu.com/text2audio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
