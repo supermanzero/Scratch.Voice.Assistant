@@ -14,10 +14,6 @@ class ScratchVoiceAssistant {
     this.autoPlayTimer = null;
     this.countdownTimer = null;
     this.isAutoPlaying = false;
-    // 添加音频预加载相关属性
-    this.preloadedAudio = null;
-    this.preloadedText = null;
-    this.isPreloading = false;
     // 检测操作系统
     this.isWindows = this.detectWindowsOS();
 
@@ -122,17 +118,18 @@ class ScratchVoiceAssistant {
         const ttsSettings = {
           engine: result.settings.voiceEngine || 'baidu',
           language: result.settings.language || 'zh-CN',
-          voice: result.settings.voiceSelect || 'baidu-110', // 度小童
+          voice: result.settings.voiceSelect || 'baidu-4140', // 度小新 - 专业女主播
           speed: result.settings.speechRate || 1.0,
           volume: result.settings.speechVolume || 0.8
         };
+        console.log('从存储加载TTS设置:', ttsSettings);
         this.ttsService.updateSettings(ttsSettings);
       } else {
         // 如果没有保存的设置，使用默认的百度TTS度小童
         const defaultTtsSettings = {
           engine: 'baidu',
           language: 'zh-CN',
-          voice: 'baidu-110', // 度小童
+          voice: 'baidu-4140', // 度小新 - 专业女主播
           speed: 1.0,
           volume: 0.8
         };
@@ -149,7 +146,7 @@ class ScratchVoiceAssistant {
       settings: {
         engine: 'baidu',
         language: 'zh-CN',
-        voice: 'baidu-110', // 度小童
+        voice: 'baidu-4140', // 度小新 - 专业女主播
         speed: 1.0,
         volume: 0.8
       },
@@ -157,481 +154,44 @@ class ScratchVoiceAssistant {
       currentAudio: null,
       currentUtterance: null,
       isPlaying: false,
-      // 添加预加载相关属性
-      preloadedAudio: null,
-      preloadedText: null,
-      isPreloading: false,
 
       updateSettings(newSettings) {
         this.settings = { ...this.settings, ...newSettings };
       },
 
-      // 添加预加载音频的方法
-      async preloadAudio(text) {
-        if (this.isPreloading || !text) {
-          return null;
-        }
 
-        this.isPreloading = true;
-        console.log('开始预加载音频:', text.substring(0, 20) + '...');
 
-        try {
-          if (this.settings.engine === 'baidu') {
-            return await this.preloadBaiduAudio(text);
-          } else if (this.settings.engine === 'google' || this.settings.engine === 'google-cloud') {
-            return await this.preloadGoogleAudio(text);
-          } else {
-            // 浏览器TTS不需要预加载
-            return null;
-          }
-        } catch (error) {
-          console.warn('音频预加载失败:', error);
-          return null;
-        } finally {
-          this.isPreloading = false;
-        }
-      },
 
-      // 预加载百度TTS音频
-      async preloadBaiduAudio(text) {
-        try {
-          const response = await chrome.runtime.sendMessage({
-            action: 'fetchTTSAudio',
-            engine: 'baidu',
-            text: text,
-            settings: this.settings
-          });
 
-          if (!response || !response.success) {
-            throw new Error(response?.error || '百度TTS 预加载失败：Background script 无响应');
-          }
 
-          // 创建预加载的音频对象
-          const preloadedAudio = new Audio();
-          preloadedAudio.volume = this.settings.volume;
-          preloadedAudio.preload = 'auto';
-          preloadedAudio.src = response.audioData;
 
-          // 等待音频完全加载完成
-          await new Promise((resolve, reject) => {
-            let isResolved = false;
-            
-            const resolveOnce = () => {
-              if (!isResolved) {
-                isResolved = true;
-                console.log('百度TTS音频预加载完成，readyState:', preloadedAudio.readyState);
-                resolve();
-              }
-            };
 
-            // 使用多个事件确保音频完全准备好
-            preloadedAudio.oncanplaythrough = resolveOnce;
-            preloadedAudio.onloadeddata = () => {
-              // 额外等待一小段时间确保音频完全缓冲
-              setTimeout(() => {
-                if (preloadedAudio.readyState >= 4) { // HAVE_ENOUGH_DATA
-                  resolveOnce();
-                }
-              }, 500);
-            };
-            
-            preloadedAudio.onerror = (error) => {
-              if (!isResolved) {
-                isResolved = true;
-                console.warn('百度TTS音频预加载失败:', error);
-                reject(error);
-              }
-            };
-            
-            // 设置超时
-            setTimeout(() => {
-              if (!isResolved && preloadedAudio.readyState >= 3) { // HAVE_FUTURE_DATA
-                console.log('百度TTS音频预加载超时但可用，readyState:', preloadedAudio.readyState);
-                resolveOnce();
-              } else if (!isResolved) {
-                isResolved = true;
-                reject(new Error('预加载超时'));
-              }
-            }, 8000); // 增加超时时间
-          });
 
-          return preloadedAudio;
-        } catch (error) {
-          throw error;
-        }
-      },
 
-      // 预加载Google TTS音频
-      async preloadGoogleAudio(text) {
-        try {
-          const response = await chrome.runtime.sendMessage({
-            action: 'fetchTTSAudio',
-            engine: 'google',
-            text: text,
-            settings: this.settings
-          });
 
-          if (!response || !response.success) {
-            throw new Error(response?.error || 'Google TTS 预加载失败：Background script 无响应');
-          }
 
-          // 创建预加载的音频对象
-          const preloadedAudio = new Audio();
-          preloadedAudio.volume = this.settings.volume;
-          preloadedAudio.playbackRate = this.settings.speed;
-          preloadedAudio.preload = 'auto';
-          preloadedAudio.src = response.audioData;
 
-          // 等待音频完全加载完成
-          await new Promise((resolve, reject) => {
-            let isResolved = false;
-            
-            const resolveOnce = () => {
-              if (!isResolved) {
-                isResolved = true;
-                console.log('Google TTS音频预加载完成，readyState:', preloadedAudio.readyState);
-                resolve();
-              }
-            };
-
-            // 使用多个事件确保音频完全准备好
-            preloadedAudio.oncanplaythrough = resolveOnce;
-            preloadedAudio.onloadeddata = () => {
-              // 额外等待一小段时间确保音频完全缓冲
-              setTimeout(() => {
-                if (preloadedAudio.readyState >= 4) { // HAVE_ENOUGH_DATA
-                  resolveOnce();
-                }
-              }, 100);
-            };
-            
-            preloadedAudio.onerror = (error) => {
-              if (!isResolved) {
-                isResolved = true;
-                console.warn('Google TTS音频预加载失败:', error);
-                reject(error);
-              }
-            };
-            
-            // 设置超时
-            setTimeout(() => {
-              if (!isResolved && preloadedAudio.readyState >= 3) { // HAVE_FUTURE_DATA
-                console.log('Google TTS音频预加载超时但可用，readyState:', preloadedAudio.readyState);
-                resolveOnce();
-              } else if (!isResolved) {
-                isResolved = true;
-                reject(new Error('预加载超时'));
-              }
-            }, 8000); // 增加超时时间
-          });
-
-          return preloadedAudio;
-        } catch (error) {
-          throw error;
-        }
-      },
-
-      // 使用预加载的音频播放
-      async playPreloadedAudio(preloadedAudio, onStart, onEnd, onError) {
-        if (!preloadedAudio) {
-          throw new Error('没有预加载的音频');
-        }
-
-        try {
-          // 停止当前播放
-          this.stop();
-
-          this.currentAudio = preloadedAudio;
-          this.currentAudio.currentTime = 0; // 重置播放位置
-
-          // 确保音频完全准备好再开始播放
-          if (this.currentAudio.readyState < 4) { // HAVE_ENOUGH_DATA
-            console.log('等待预加载音频完全准备好，当前readyState:', this.currentAudio.readyState);
-            await new Promise((resolve) => {
-              const checkReady = () => {
-                if (this.currentAudio.readyState >= 4) {
-                  resolve();
-                } else {
-                  setTimeout(checkReady, 50);
-                }
-              };
-              checkReady();
-            });
-          }
-
-          // 使用更准确的事件监听 - 改为 onplay
-          this.currentAudio.onplay = () => {
-            this.isPlaying = true;
-            if (onStart) onStart();
-          };
-
-          this.currentAudio.onended = () => {
-            this.isPlaying = false;
-            if (onEnd) onEnd();
-          };
-
-          this.currentAudio.onerror = (error) => {
-            this.isPlaying = false;
-            if (onError) onError(error);
-          };
-
-          // 添加一个小的延迟确保音频完全准备好
-          await new Promise(resolve => setTimeout(resolve, 50));
-          
-          await this.currentAudio.play();
-        } catch (error) {
-          this.isPlaying = false;
-          if (onError) onError(error);
-          throw error;
-        }
-      },
-
-      async speak(text, onStart, onEnd, onError) {
-        try {
-          // 停止当前播放
-          this.stop();
-
-          // 检查是否有预加载的音频可以使用
-          if (this.preloadedAudio && this.preloadedText === text) {
-            console.log('使用预加载的音频播放');
-            await this.playPreloadedAudio(this.preloadedAudio, onStart, onEnd, onError);
-            // 清除预加载的音频
-            this.preloadedAudio = null;
-            this.preloadedText = null;
-            return;
-          }
-
-          // 清除之前的预加载音频
-          if (this.preloadedAudio) {
-            this.preloadedAudio = null;
-            this.preloadedText = null;
-          }
-
-          if (this.settings.engine === 'google' || this.settings.engine === 'google-cloud') {
-            // 尝试 Google TTS
-            try {
-              await this.speakWithGoogle(text, onStart, onEnd, onError);
-            } catch (googleError) {
-              await this.speakWithBrowser(text, onStart, onEnd, onError);
-            }
-          } else if (this.settings.engine === 'baidu') {
-            // 尝试百度 TTS
-            try {
-              await this.speakWithBaidu(text, onStart, onEnd, onError);
-            } catch (baiduError) {
-              await this.speakWithBrowser(text, onStart, onEnd, onError);
-            }
-          } else {
-            // 使用浏览器 TTS
-            await this.speakWithBrowser(text, onStart, onEnd, onError);
-          }
-        } catch (error) {
-          if (onError) onError(error);
-        }
-      },
-
-      async speakWithBrowser(text, onStart, onEnd, onError) {
-        return new Promise((resolve, reject) => {
-          try {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = this.settings.language;
-            utterance.rate = this.settings.speed;
-            utterance.volume = this.settings.volume;
-
-            // 获取语音列表
-            let voices = speechSynthesis.getVoices();
-
-            const setupAndSpeak = () => {
-              voices = speechSynthesis.getVoices();
-
-              // 选择语音
-              if (this.settings.voice && voices.length > 0) {
-                const selectedVoice = voices.find(voice => voice.name === this.settings.voice);
-                if (selectedVoice) {
-                  utterance.voice = selectedVoice;
-                }
-              } else if (voices.length > 0) {
-                // 自动选择中文语音
-                const chineseVoice = voices.find(voice =>
-                  voice.lang.includes('zh') || voice.lang.includes('cmn')
-                );
-                if (chineseVoice) {
-                  utterance.voice = chineseVoice;
-                }
-              }
-
-              utterance.onstart = () => {
-                this.isPlaying = true;
-                if (onStart) onStart();
-                resolve();
-              };
-
-              utterance.onend = () => {
-                this.isPlaying = false;
-                if (onEnd) onEnd();
-              };
-
-              utterance.onerror = (error) => {
-                this.isPlaying = false;
-                if (onError) onError(error);
-                reject(error);
-              };
-
-              // 确保之前的语音已停止
-              if (speechSynthesis.speaking) {
-                speechSynthesis.cancel();
-              }
-
-              speechSynthesis.speak(utterance);
-              this.currentUtterance = utterance;
-            };
-
-            if (voices.length === 0) {
-              speechSynthesis.onvoiceschanged = setupAndSpeak;
-              // 设置超时
-              setTimeout(() => {
-                if (speechSynthesis.getVoices().length === 0) {
-                  setupAndSpeak();
-                }
-              }, 1000);
-            } else {
-              setupAndSpeak();
-            }
-          } catch (error) {
-            reject(error);
-          }
-        });
-      },
-
-      async speakWithGoogle(text, onStart, onEnd, onError) {
-        console.log('speakWithGoogle', text);
-        try {
-          // 通过background service worker获取音频（解决CORS问题）
-          const response = await chrome.runtime.sendMessage({
-            action: 'fetchTTSAudio',
-            engine: 'google',
-            text: text,
-            settings: this.settings
-          });
-
-          if (!response || !response.success) {
-            throw new Error(response?.error || 'Google TTS 请求失败：Background script 无响应');
-          }
-
-          this.currentAudio = new Audio();
-          this.currentAudio.volume = this.settings.volume;
-          this.currentAudio.playbackRate = this.settings.speed;
-
-          // 使用更准确的事件监听
-          this.currentAudio.onplay = () => {
-            this.isPlaying = true;
-            if (onStart) onStart();
-          };
-
-          this.currentAudio.onended = () => {
-            this.isPlaying = false;
-            if (onEnd) onEnd();
-          };
-
-          this.currentAudio.onerror = (error) => {
-            this.isPlaying = false;
-            if (onError) onError(error);
-          };
-
-          this.currentAudio.src = response.audioData;
-          
-          // 等待音频加载完成再播放
-          await new Promise((resolve, reject) => {
-            this.currentAudio.oncanplaythrough = () => {
-              resolve();
-            };
-            this.currentAudio.onerror = reject;
-            // 设置超时
-            setTimeout(() => {
-              if (this.currentAudio.readyState >= 3) {
-                resolve();
-              } else {
-                reject(new Error('音频加载超时'));
-              }
-            }, 5000);
-          });
-          
-          await this.currentAudio.play();
-        } catch (error) {
-          throw error;
-        }
-      },
-
-      async speakWithBaidu(text, onStart, onEnd, onError) {
-        console.log('speakWithBaidu', text);
-        try {
-          // 通过background service worker获取音频（解决CORS问题）
-          const response = await chrome.runtime.sendMessage({
-            action: 'fetchTTSAudio',
-            engine: 'baidu',
-            text: text,
-            settings: this.settings
-          });
-
-          if (!response || !response.success) {
-            throw new Error(response?.error || '百度TTS 请求失败：Background script 无响应');
-          }
-
-          this.currentAudio = new Audio();
-          this.currentAudio.volume = this.settings.volume;
-
-          // 使用更准确的事件监听
-          this.currentAudio.onplay = () => {
-            this.isPlaying = true;
-            if (onStart) onStart();
-          };
-
-          this.currentAudio.onended = () => {
-            this.isPlaying = false;
-            if (onEnd) onEnd();
-          };
-
-          this.currentAudio.onerror = (error) => {
-            this.isPlaying = false;
-            if (onError) onError(error);
-          };
-
-          this.currentAudio.src = response.audioData;
-          
-          // 等待音频加载完成再播放
-          await new Promise((resolve, reject) => {
-            this.currentAudio.oncanplaythrough = () => {
-              resolve();
-            };
-            this.currentAudio.onerror = reject;
-            // 设置超时
-            setTimeout(() => {
-              if (this.currentAudio.readyState >= 3) {
-                resolve();
-              } else {
-                reject(new Error('音频加载超时'));
-              }
-            }, 5000);
-          });
-          
-          await this.currentAudio.play();
-        } catch (error) {
-          throw error;
-        }
-      },
 
       stop() {
+        console.log('TTS服务停止播放');
         this.isPlaying = false;
 
         // 停止当前音频
         if (this.currentAudio) {
+          console.log('停止当前音频');
           this.currentAudio.pause();
           this.currentAudio.currentTime = 0;
+          // 移除所有事件监听器，防止内存泄漏
+          this.currentAudio.onplay = null;
+          this.currentAudio.onended = null;
+          this.currentAudio.onerror = null;
+          this.currentAudio.oncanplaythrough = null;
           this.currentAudio = null;
         }
 
         // 停止浏览器 TTS
         if (speechSynthesis.speaking) {
+          console.log('停止浏览器TTS');
           speechSynthesis.cancel();
         }
 
@@ -640,20 +200,12 @@ class ScratchVoiceAssistant {
         }
       },
 
-      // 清除预加载的音频
-      clearPreloadedAudio() {
-        if (this.preloadedAudio) {
-          this.preloadedAudio = null;
-          this.preloadedText = null;
-        }
-      },
 
       getStatus() {
         return {
           isPlaying: this.isPlaying,
           engine: this.settings.engine,
-          settings: this.settings,
-          hasPreloadedAudio: !!this.preloadedAudio
+          settings: this.settings
         };
       }
     };
@@ -885,12 +437,13 @@ class ScratchVoiceAssistant {
                 <option value="browser">浏览器TTS</option>
                 <option value="google">Google TTS</option>
                 <option value="baidu" selected>百度TTS</option>
+                <option value="youdao">有道TTS</option>
               </select>
             </div>
-            <div class="setting-item hidden">
+            <div class="setting-item hidden" style="display: none;">
               <span class="setting-text">语音选择</span>
               <select class="setting-select" id="voiceSelectSetting">
-                <option value="">加载中...</option>
+                <option value="baidu-4140">度小新 (专业女主播)</option>
               </select>
             </div>
             <div class="setting-item hidden">
@@ -927,6 +480,14 @@ class ScratchVoiceAssistant {
   }
 
   bindEvents() {
+    // 防止重复绑定事件监听器
+    if (this.eventsBound) {
+      console.log('事件已绑定，跳过重复绑定');
+      return;
+    }
+    
+    console.log('开始绑定事件监听器...');
+    
     // 折叠/展开按钮
     const toggleBtn = this.widget.querySelector('#toggleBtn');
     toggleBtn.addEventListener('click', () => this.toggleWidget());
@@ -968,7 +529,19 @@ class ScratchVoiceAssistant {
     if (voiceSelectSetting) voiceSelectSetting.addEventListener('change', () => this.saveWidgetSettings());
     if (speechRateSetting) speechRateSetting.addEventListener('input', () => this.onWidgetSpeechRateChange());
     if (speechVolumeSetting) speechVolumeSetting.addEventListener('input', () => this.onWidgetSpeechVolumeChange());
-    if (testVoiceBtn) testVoiceBtn.addEventListener('click', () => this.testWidgetVoice());
+    if (testVoiceBtn) {
+      console.log('绑定测试语音按钮事件');
+      testVoiceBtn.addEventListener('click', () => {
+        console.log('测试语音按钮被点击');
+        this.testWidgetVoice();
+      });
+    } else {
+      console.log('未找到测试语音按钮元素');
+    }
+    
+    // 标记事件已绑定
+    this.eventsBound = true;
+    console.log('事件监听器绑定完成');
   }
 
   toggleWidget() {
@@ -1289,99 +862,482 @@ class ScratchVoiceAssistant {
       console.log('非Windows系统，不添加"嗯"前缀');
     }
     
-    this.speak(textToSpeak);
+    // 使用统一入口，传递回调函数
+    this.speak(textToSpeak, 
+      () => {
+        console.log('音频开始播放');
+        this.isPlaying = true;
+        this.updatePlayButton();
+      },
+      () => {
+        console.log('音频播放完成');
+        this.isPlaying = false;
+        this.updatePlayButton();
+        // 检查是否需要自动播放下一步
+        this.checkAutoPlayNext();
+      },
+      (error) => {
+        console.error('音频播放失败:', error);
+        this.isPlaying = false;
+        this.updatePlayButton();
+      }
+    );
   }
 
-  async speak(text) {
+  // 统一入口 - 唯一允许调用TTS的地方
+  async speak(text, onStart, onEnd, onError) {
+    console.log('=== 统一入口speak方法 ===');
+    console.log('开始播放新音频，文本:', text.substring(0, 20) + '...');
+    
     // 停止当前播放和自动播放定时器
     this.stopSpeech();
+    
+    // 等待一小段时间确保音频完全停止
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
       if (this.ttsService) {
-        // 使用 TTS 服务
-        await this.ttsService.speak(
-          text,
-          () => {
-            this.isPlaying = true;
-            this.updatePlayButton();
-          },
-          () => {
-            this.isPlaying = false;
-            this.updatePlayButton();
-            // 语音播放完成后，检查是否需要自动播放下一步
-            this.checkAutoPlayNext();
-          },
-          (error) => {
-            this.isPlaying = false;
-            this.updatePlayButton();
-            // 尝试浏览器 TTS 作为回退
-            // this.fallbackToBasicTTS(text);
-          }
-        );
+        const engine = this.ttsService.settings.engine;
+        console.log('使用TTS引擎:', engine);
+        
+        // 根据引擎选择对应的播放方法
+        if (engine === 'baidu') {
+          await this.speakWithBaiduDirect(text, onStart, onEnd, onError);
+        } else if (engine === 'youdao') {
+          await this.speakWithYoudaoDirect(text, onStart, onEnd, onError);
+        } else if (engine === 'google') {
+          await this.speakWithGoogleDirect(text, onStart, onEnd, onError);
+        } else {
+          // 默认使用浏览器TTS
+          await this.speakWithBrowserDirect(text, onStart, onEnd, onError);
+        }
       } else {
-        // await this.fallbackToBasicTTS(text);
+        // 回退到浏览器TTS
+        await this.speakWithBrowserDirect(text, onStart, onEnd, onError);
       }
     } catch (error) {
-      this.isPlaying = false;
-      this.updatePlayButton();
-      // 最后的回退尝试
+      console.error('TTS调用失败:', error);
+      
+      // 检查是否是扩展上下文失效错误
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('扩展上下文已失效，请刷新页面或重新加载扩展');
+        if (onError) onError(error);
+        return;
+      }
+      
+      // 最后的回退尝试 - 使用浏览器TTS
+      console.warn('主TTS失败，回退到浏览器TTS');
       try {
-        // await this.fallbackToBasicTTS(text);
+        await this.speakWithBrowserDirect(text, onStart, onEnd, onError);
       } catch (fallbackError) {
-        alert('语音播放失败，请检查浏览器设置或尝试刷新页面');
+        console.error('浏览器TTS回退也失败:', fallbackError);
+        this.isPlaying = false;
+        this.updatePlayButton();
+        if (onError) onError(fallbackError);
       }
     }
   }
 
-  // 基础浏览器 TTS 回退方法
-  async fallbackToBasicTTS(text) {
+  // 获取百度API访问令牌
+  async getBaiduAccessToken() {
+    try {
+      // 检查缓存的token是否还有效
+      const result = await chrome.storage.local.get(['baiduAccessToken', 'tokenExpireTime']);
+      const now = Date.now();
+      
+      if (result.baiduAccessToken && result.tokenExpireTime && now < result.tokenExpireTime) {
+        console.log('使用缓存的百度API token');
+        return result.baiduAccessToken;
+      }
+      
+      // 获取新的token（通过本地代理服务）
+      const tokenUrl = 'http://localhost:8000/proxy/baidu-token';
+      console.log('获取新的百度API token，通过代理服务:', tokenUrl);
+      
+      // 百度API密钥
+      const AK = "FeNVdlSqSTt9IO3Bz4SCDiVj";
+      const SK = "NL9bpxsOt7pxf1m3v43G5vPD5CIjoSFo";
+      
+      // 构建POST数据
+      const formData = new URLSearchParams();
+      formData.append('ak', AK);
+      formData.append('sk', SK);
+      
+      const response = await fetch(tokenUrl, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: formData
+      });
+      console.log('百度API token响应状态:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('百度API token请求失败，响应内容:', errorText);
+        throw new Error(`获取百度API token失败: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('百度API token响应数据键:', Object.keys(data));
+      
+      if (data.error) {
+        throw new Error(`百度API认证失败: ${data.error_description || data.error}`);
+      }
+      
+      if (!data.access_token) {
+        throw new Error('百度API响应中没有access_token');
+      }
+      
+      // 缓存token（有效期通常为30天，这里设置为25天以确保安全）
+      const expireTime = now + (25 * 24 * 60 * 60 * 1000);
+      await chrome.storage.local.set({
+        baiduAccessToken: data.access_token,
+        tokenExpireTime: expireTime
+      });
+      
+      console.log('百度API token获取成功并已缓存');
+      return data.access_token;
+    } catch (error) {
+      console.error('获取百度API访问令牌失败:', error);
+      throw new Error(`获取百度API访问令牌失败: ${error.message}`);
+    }
+  }
+
+  // 纯粹的百度TTS播放方法 - 直接调用代理服务器
+  async speakWithBaiduDirect(text, onStart, onEnd, onError) {
+    console.log('=== speakWithBaiduDirect 纯播放方法 ===');
+    console.log('调用百度TTS，设置:', this.ttsService.settings);
+    
+    try {
+      // 1. 获取access token
+      const accessToken = await this.getBaiduAccessToken();
+      
+      // 2. 从语音选择中提取语音ID
+      const voiceId = this.ttsService.settings.voice ? this.ttsService.settings.voice.replace('baidu-', '') : '4140';
+      
+      // 3. 构建请求数据
+      const requestData = {
+        tex: text,
+        tok: accessToken,
+        cuid: 'Lb4nwynEiEtTYmg6L7VlgxYPKUDS76Mg',
+        ctp: '1',
+        lan: 'zh',
+        spd: '5',
+        pit: '5',
+        vol: '5',
+        per: voiceId,
+        aue: '3'
+      };
+      
+      console.log('百度TTS请求数据:', requestData);
+      
+      // 4. 构建form data
+      const formData = new URLSearchParams();
+      Object.keys(requestData).forEach(key => {
+        formData.append(key, requestData[key]);
+      });
+      
+      // 5. 直接调用代理服务器
+      const response = await fetch('http://localhost:8000/proxy/baidu-tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': '*/*'
+        },
+        body: formData
+      });
+      
+      console.log('百度TTS响应状态:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`百度TTS请求失败: ${response.status} - ${errorText}`);
+      }
+      
+      // 6. 获取音频数据
+      const audioBlob = await response.blob();
+      console.log('音频数据大小:', audioBlob.size, 'bytes');
+      
+      if (audioBlob.size === 0) {
+        throw new Error('百度TTS返回的音频数据为空');
+      }
+      
+      // 7. 创建音频URL
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // 8. 构造 Audio，绑定事件
+      const audio = new Audio(audioUrl);
+      audio.volume = this.ttsService.settings.volume;
+      audio.playbackRate = this.ttsService.settings.speed;
+      
+      audio.onplay = () => {
+        console.log('百度TTS音频开始播放');
+        this.ttsService.isPlaying = true;
+        this.isPlaying = true;
+        this.updatePlayButton();
+        if (onStart) onStart();
+      };
+      
+      audio.onended = () => {
+        console.log('百度TTS音频播放完成');
+        this.ttsService.isPlaying = false;
+        this.isPlaying = false;
+        this.updatePlayButton();
+        // 清理URL对象
+        URL.revokeObjectURL(audioUrl);
+        if (onEnd) onEnd();
+      };
+      
+      audio.onerror = (err) => {
+        console.error('百度TTS音频播放错误:', err);
+        this.ttsService.isPlaying = false;
+        this.isPlaying = false;
+        this.updatePlayButton();
+        // 清理URL对象
+        URL.revokeObjectURL(audioUrl);
+        if (onError) onError(err);
+      };
+      
+      // 9. 播放
+      await audio.play();
+      this.ttsService.currentAudio = audio;
+      
+    } catch (error) {
+      console.error('百度TTS播放失败:', error);
+      // 只抛出错误，不调用任何其他方法
+      throw error;
+    }
+  }
+
+  // 纯粹的有道TTS播放方法 - 不调用任何其他方法
+  async speakWithYoudaoDirect(text, onStart, onEnd, onError) {
+    console.log('=== speakWithYoudaoDirect 纯播放方法 ===');
+    console.log('调用有道TTS，设置:', this.ttsService.settings);
+    
+    try {
+      // 1. 请求音频
+      const ttsSettings = {
+        voice: this.ttsService.settings.voice,
+        speed: this.ttsService.settings.speed,
+        volume: this.ttsService.settings.volume,
+        language: this.ttsService.settings.language
+      };
+      
+      const response = await chrome.runtime.sendMessage({
+        action: 'fetchTTSAudio',
+        engine: 'youdao',
+        text: text,
+        settings: ttsSettings
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error || '有道TTS 请求失败');
+      }
+
+      if (!response.audioData) {
+        throw new Error('有道TTS 返回音频为空');
+      }
+
+      console.log('有道TTS音频数据获取成功，开始播放');
+      
+      // 2. 构造 Audio，绑定事件
+      const audio = new Audio(response.audioData);
+      audio.volume = this.ttsService.settings.volume;
+      audio.playbackRate = this.ttsService.settings.speed;
+      
+      audio.onplay = () => {
+        console.log('有道TTS音频开始播放');
+        this.ttsService.isPlaying = true;
+        this.isPlaying = true;
+        this.updatePlayButton();
+        if (onStart) onStart();
+      };
+      
+      audio.onended = () => {
+        console.log('有道TTS音频播放完成');
+        this.ttsService.isPlaying = false;
+        this.isPlaying = false;
+        this.updatePlayButton();
+        if (onEnd) onEnd();
+      };
+      
+      audio.onerror = (err) => {
+        console.error('有道TTS音频播放错误:', err);
+        this.ttsService.isPlaying = false;
+        this.isPlaying = false;
+        this.updatePlayButton();
+        if (onError) onError(err);
+      };
+      
+      // 3. 播放
+      await audio.play();
+      this.ttsService.currentAudio = audio;
+      
+    } catch (error) {
+      console.error('有道TTS播放失败:', error);
+      // 只抛出错误，不调用任何其他方法
+      throw error;
+    }
+  }
+
+  // 纯粹的Google TTS播放方法 - 不调用任何其他方法
+  async speakWithGoogleDirect(text, onStart, onEnd, onError) {
+    console.log('=== speakWithGoogleDirect 纯播放方法 ===');
+    console.log('调用Google TTS，设置:', this.ttsService.settings);
+    
+    try {
+      // 1. 请求音频
+      const response = await chrome.runtime.sendMessage({
+        action: 'fetchTTSAudio',
+        engine: 'google',
+        text: text,
+        settings: this.ttsService.settings
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'Google TTS 请求失败');
+      }
+
+      if (!response.audioData) {
+        throw new Error('Google TTS 返回音频为空');
+      }
+
+      console.log('Google TTS音频数据获取成功，开始播放');
+      
+      // 2. 构造 Audio，绑定事件
+      const audio = new Audio(response.audioData);
+      audio.volume = this.ttsService.settings.volume;
+      audio.playbackRate = this.ttsService.settings.speed;
+      
+      audio.onplay = () => {
+        console.log('Google TTS音频开始播放');
+        this.ttsService.isPlaying = true;
+        this.isPlaying = true;
+        this.updatePlayButton();
+        if (onStart) onStart();
+      };
+      
+      audio.onended = () => {
+        console.log('Google TTS音频播放完成');
+        this.ttsService.isPlaying = false;
+        this.isPlaying = false;
+        this.updatePlayButton();
+        if (onEnd) onEnd();
+      };
+      
+      audio.onerror = (err) => {
+        console.error('Google TTS音频播放错误:', err);
+        this.ttsService.isPlaying = false;
+        this.isPlaying = false;
+        this.updatePlayButton();
+        if (onError) onError(err);
+      };
+      
+      // 3. 播放
+      await audio.play();
+      this.ttsService.currentAudio = audio;
+      
+    } catch (error) {
+      console.error('Google TTS播放失败:', error);
+      // 只抛出错误，不调用任何其他方法
+      throw error;
+    }
+  }
+
+  // 纯粹的浏览器TTS播放方法 - 不调用任何其他方法
+  async speakWithBrowserDirect(text, onStart, onEnd, onError) {
+    console.log('=== speakWithBrowserDirect 纯播放方法 ===');
+    console.log('调用浏览器TTS，设置:', this.ttsService?.settings || '无TTS服务');
+    
     return new Promise((resolve, reject) => {
       try {
-        console.log('使用基础浏览器 TTS');
-
         // 确保之前的语音已停止
         if (speechSynthesis.speaking) {
           speechSynthesis.cancel();
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
+        utterance.lang = this.ttsService?.settings?.language || 'zh-CN';
+        utterance.rate = this.ttsService?.settings?.speed || 1.0;
+        utterance.volume = this.ttsService?.settings?.volume || 0.8;
 
-        const speedRange = this.widget.querySelector('#speedRange');
-        const volumeRange = this.widget.querySelector('#volumeRange');
+        // 获取语音列表
+        let voices = speechSynthesis.getVoices();
 
-        if (speedRange) utterance.rate = parseFloat(speedRange.value);
-        if (volumeRange) utterance.volume = parseFloat(volumeRange.value);
+        const setupAndSpeak = () => {
+          voices = speechSynthesis.getVoices();
 
-        utterance.onstart = () => {
-          console.log('基础 TTS 开始播放');
-          this.isPlaying = true;
-          this.updatePlayButton();
-          resolve();
+          // 选择语音
+          if (this.ttsService?.settings?.voice && voices.length > 0) {
+            const selectedVoice = voices.find(voice => voice.name === this.ttsService.settings.voice);
+            if (selectedVoice) {
+              utterance.voice = selectedVoice;
+            }
+          } else if (voices.length > 0) {
+            // 自动选择中文语音
+            const chineseVoice = voices.find(voice =>
+              voice.lang.includes('zh') || voice.lang.includes('cmn')
+            );
+            if (chineseVoice) {
+              utterance.voice = chineseVoice;
+            }
+          }
+
+          utterance.onstart = () => {
+            console.log('浏览器TTS开始播放');
+            this.isPlaying = true;
+            this.updatePlayButton();
+            if (onStart) onStart();
+            resolve();
+          };
+
+          utterance.onend = () => {
+            console.log('浏览器TTS播放完成');
+            this.isPlaying = false;
+            this.updatePlayButton();
+            if (onEnd) onEnd();
+          };
+
+          utterance.onerror = (error) => {
+            console.error('浏览器TTS播放错误:', error);
+            this.isPlaying = false;
+            this.updatePlayButton();
+            if (onError) onError(error);
+            reject(error);
+          };
+
+          // 确保之前的语音已停止
+          if (speechSynthesis.speaking) {
+            speechSynthesis.cancel();
+          }
+
+          speechSynthesis.speak(utterance);
         };
 
-        utterance.onend = () => {
-          console.log('基础 TTS 播放完成');
-          this.isPlaying = false;
-          this.updatePlayButton();
-        };
-
-        utterance.onerror = (error) => {
-          console.error('基础 TTS 播放错误:', error);
-          this.isPlaying = false;
-          this.updatePlayButton();
-          reject(error);
-        };
-
-        speechSynthesis.speak(utterance);
-        this.currentUtterance = utterance;
+        if (voices.length === 0) {
+          speechSynthesis.onvoiceschanged = setupAndSpeak;
+          // 设置超时
+          setTimeout(() => {
+            if (speechSynthesis.getVoices().length === 0) {
+              setupAndSpeak();
+            }
+          }, 1000);
+        } else {
+          setupAndSpeak();
+        }
       } catch (error) {
+        console.error('浏览器TTS播放失败:', error);
         reject(error);
       }
     });
   }
 
+
+
+
   stopSpeech() {
+    console.log('停止语音播放');
     // 清除自动播放定时器
     this.clearAutoPlayTimer();
     
@@ -1390,8 +1346,12 @@ class ScratchVoiceAssistant {
     } else if (speechSynthesis.speaking) {
       speechSynthesis.cancel();
     }
+    
+    // 确保播放状态被重置
     this.isPlaying = false;
     this.updatePlayButton();
+    
+    console.log('语音播放已停止');
   }
 
   updatePlayButton(countdown = null) {
@@ -1456,9 +1416,6 @@ class ScratchVoiceAssistant {
     let countdown = 5;
     this.updatePlayButton(countdown);
     
-    // 在倒计时开始时预加载下一步的音频
-    this.preloadNextStepAudio();
-    
     const countdownTimer = setInterval(() => {
       countdown--;
       if (countdown > 0 && this.isAutoPlaying) {
@@ -1476,46 +1433,6 @@ class ScratchVoiceAssistant {
     this.countdownTimer = countdownTimer;
   }
 
-  // 预加载下一步的音频
-  async preloadNextStepAudio() {
-    if (!this.currentTutorial || !this.ttsService) {
-      return;
-    }
-
-    const nextStepIndex = this.currentStepIndex + 1;
-    if (nextStepIndex >= this.currentTutorial.steps.length) {
-      return; // 没有下一步了
-    }
-
-    const nextStep = this.currentTutorial.steps[nextStepIndex];
-    if (!nextStep || !nextStep.text) {
-      return;
-    }
-
-    try {
-      // 根据操作系统决定预加载的文本内容
-      let textToPreload = nextStep.text;
-      if (this.isWindows) {
-        textToPreload = '嗯' + nextStep.text;
-      }
-      
-      console.log('开始预加载下一步音频:', textToPreload.substring(0, 20) + '...');
-      
-      // 清除之前的预加载音频
-      this.ttsService.clearPreloadedAudio();
-      
-      // 预加载下一步的音频
-      const preloadedAudio = await this.ttsService.preloadAudio(textToPreload);
-      
-      if (preloadedAudio) {
-        this.ttsService.preloadedAudio = preloadedAudio;
-        this.ttsService.preloadedText = textToPreload; // 保存完整的文本（包含"嗯"前缀）
-        console.log('下一步音频预加载成功');
-      }
-    } catch (error) {
-      console.warn('预加载下一步音频失败:', error);
-    }
-  }
 
   // 清除自动播放定时器
   clearAutoPlayTimer() {
@@ -1531,11 +1448,6 @@ class ScratchVoiceAssistant {
     }
     
     this.isAutoPlaying = false;
-    
-    // 清除预加载的音频
-    if (this.ttsService) {
-      this.ttsService.clearPreloadedAudio();
-    }
     
     // 恢复按钮正常状态
     this.updatePlayButton();
@@ -1564,37 +1476,44 @@ class ScratchVoiceAssistant {
   previousStep() {
     if (!this.currentTutorial || this.currentStepIndex <= 0) return;
 
+    console.log('切换到上一步');
     // 手动操作时停止自动播放
     this.clearAutoPlayTimer();
+    
+    // 确保停止当前播放
+    this.stopSpeech();
     
     this.currentStepIndex--;
     this.updateUI();
     this.saveCurrentTutorialState();
-    this.playCurrentStep();
+    
+    // 稍微延迟播放，确保停止操作完成
+    setTimeout(() => {
+      this.playCurrentStep();
+    }, 150);
   }
 
   nextStep() {
     if (!this.currentTutorial || this.currentStepIndex >= this.currentTutorial.steps.length - 1) return;
 
+    console.log('切换到下一步');
     // 手动点击下一步时，不清除自动播放（让自动播放继续）
     // 但如果是最后一步，则停止自动播放
     if (this.currentStepIndex >= this.currentTutorial.steps.length - 2) {
       this.clearAutoPlayTimer();
     }
     
+    // 确保停止当前播放
+    this.stopSpeech();
+    
     this.currentStepIndex++;
     this.updateUI();
     this.saveCurrentTutorialState();
     
-    // 播放当前步骤（如果有预加载的音频会自动使用）
-    this.playCurrentStep();
-    
-    // 预加载下一步的音频（如果还有下一步）
-    if (this.currentStepIndex < this.currentTutorial.steps.length - 1) {
-      setTimeout(() => {
-        this.preloadNextStepAudio();
-      }, 1000); // 延迟1秒预加载，避免影响当前播放
-    }
+    // 稍微延迟播放，确保停止操作完成
+    setTimeout(() => {
+      this.playCurrentStep();
+    }, 150);
   }
 
   // 保存当前教程状态
@@ -1619,9 +1538,17 @@ class ScratchVoiceAssistant {
   }
 
   repeatStep() {
+    console.log('重复播放当前步骤');
     // 重复播放时停止自动播放定时器，避免冲突
     this.clearAutoPlayTimer();
-    this.playCurrentStep();
+    
+    // 确保停止当前播放
+    this.stopSpeech();
+    
+    // 稍微延迟播放，确保停止操作完成
+    setTimeout(() => {
+      this.playCurrentStep();
+    }, 150);
   }
 
   toggleSettings() {
@@ -1713,7 +1640,11 @@ class ScratchVoiceAssistant {
         this.populateWidgetGoogleVoices();
         break;
       case 'baidu':
-        this.populateWidgetBaiduVoices();
+        // 百度TTS直接使用固定角色，不需要选择
+        this.setFixedWidgetBaiduVoice();
+        break;
+      case 'youdao':
+        this.populateWidgetYoudaoVoices();
         break;
       default:
         await this.loadWidgetVoices();
@@ -1721,8 +1652,19 @@ class ScratchVoiceAssistant {
   }
 
   async testWidgetVoice() {
+    console.log('testWidgetVoice 被调用');
     const testBtn = this.widget.querySelector('#testVoiceBtn');
-    if (!testBtn) return;
+    if (!testBtn) {
+      console.log('未找到测试按钮');
+      return;
+    }
+    
+    // 临时调试：显示设置面板
+    const settingsPanel = this.widget.querySelector('#settingsPanel');
+    if (settingsPanel && settingsPanel.classList.contains('hidden')) {
+      console.log('设置面板被隐藏，自动显示设置面板');
+      settingsPanel.classList.remove('hidden');
+    }
 
     const originalText = testBtn.textContent;
     
@@ -1737,11 +1679,19 @@ class ScratchVoiceAssistant {
         speechRate: parseFloat(this.widget.querySelector('#speechRateSetting')?.value || 1.0),
         speechVolume: parseFloat(this.widget.querySelector('#speechVolumeSetting')?.value || 0.8)
       };
+      
+      console.log('测试语音设置:', settings);
+      console.log('当前语音引擎:', settings.voiceEngine);
 
       // 根据语音引擎选择测试方法
       if (settings.voiceEngine === 'baidu') {
-        await this.testVoiceWithBaidu(settings, '这是百度语音测试，你好！');
+        console.log('选择百度TTS测试');
+        await this.testVoiceWithBaidu(settings, '学会用 Scratch 的键盘检测、角色移动和说话积木，制作一个可以键盘控制猫咪移动并说话的互动程序！');
+      } else if (settings.voiceEngine === 'youdao') {
+        console.log('选择有道TTS测试');
+        await this.testVoiceWithYoudao(settings, '这是有道语音测试，你好！');
       } else {
+        console.log('选择浏览器TTS测试，引擎:', settings.voiceEngine);
         // 使用浏览器 TTS 测试
         await this.testVoiceWithBrowser(settings, '这是语音测试，你好！');
       }
@@ -1814,44 +1764,59 @@ class ScratchVoiceAssistant {
 
   async testVoiceWithBaidu(settings, text) {
     try {
-      // 通过background service worker获取音频（解决CORS问题）
-      const response = await chrome.runtime.sendMessage({
-        action: 'fetchTTSAudio',
-        engine: 'baidu',
-        text: text,
-        settings: {
-          voice: settings.voiceSelect,
-          speed: settings.speechRate,
-          volume: settings.speechVolume,
-          language: settings.language
-        }
-      });
-
-      if (!response.success) {
-        throw new Error(response.error || '百度TTS 请求失败');
-      }
-
-      const audio = new Audio();
-      audio.volume = settings.speechVolume;
+      console.log('测试百度TTS，设置:', settings);
       
-      return new Promise((resolve, reject) => {
-        audio.onloadstart = () => {
-          resolve();
-        };
-
-        audio.onended = () => {
-          console.log('百度TTS播放完成');
-        };
-
-        audio.onerror = () => {
-          reject(new Error('百度TTS播放失败'));
-        };
-
-        audio.src = response.audioData;
-        audio.play().catch(reject);
-      });
+      // 临时更新TTS服务设置
+      const originalSettings = this.ttsService.settings;
+      this.ttsService.settings = { ...originalSettings, ...settings };
+      
+      // 使用统一入口进行测试，传递回调函数
+      await this.speak(text,
+        () => {
+          console.log('测试百度TTS开始播放');
+        },
+        () => {
+          console.log('测试百度TTS播放完成');
+        },
+        (error) => {
+          console.error('测试百度TTS播放失败:', error);
+        }
+      );
+      
+      // 恢复原始设置
+      this.ttsService.settings = originalSettings;
+      
     } catch (error) {
       throw new Error(`百度TTS测试失败: ${error.message}`);
+    }
+  }
+
+  async testVoiceWithYoudao(settings, text) {
+    try {
+      console.log('测试有道TTS，设置:', settings);
+      
+      // 临时更新TTS服务设置
+      const originalSettings = this.ttsService.settings;
+      this.ttsService.settings = { ...originalSettings, ...settings, engine: 'youdao' };
+      
+      // 使用统一入口进行测试，传递回调函数
+      await this.speak(text,
+        () => {
+          console.log('测试有道TTS开始播放');
+        },
+        () => {
+          console.log('测试有道TTS播放完成');
+        },
+        (error) => {
+          console.error('测试有道TTS播放失败:', error);
+        }
+      );
+      
+      // 恢复原始设置
+      this.ttsService.settings = originalSettings;
+      
+    } catch (error) {
+      throw new Error(`有道TTS测试失败: ${error.message}`);
     }
   }
 
@@ -1962,6 +1927,14 @@ class ScratchVoiceAssistant {
     voiceSelect.appendChild(chineseGroup);
   }
 
+  setFixedWidgetBaiduVoice() {
+    const voiceSelect = this.widget.querySelector('#voiceSelectSetting');
+    if (!voiceSelect) return;
+    
+    voiceSelect.innerHTML = '<option value="baidu-4140">度小新 (专业女主播)</option>';
+    voiceSelect.value = 'baidu-4140';
+  }
+
   populateWidgetBaiduVoices() {
     const voiceSelect = this.widget.querySelector('#voiceSelectSetting');
     if (!voiceSelect) return;
@@ -1971,7 +1944,7 @@ class ScratchVoiceAssistant {
     const baiduVoices = [
       { name: '百度女声 (度小美)', value: 'baidu-0', lang: 'zh-CN' },
       { name: '百度男声 (度小宇)', value: 'baidu-1', lang: 'zh-CN' },
-      { name: '百度女声 (度小娇)', value: 'baidu-3', lang: 'zh-CN' },
+      { name: '百度女声 (度小娇)', value: 'baidu-4140', lang: 'zh-CN' },
       { name: '百度男声 (度米朵)', value: 'baidu-4', lang: 'zh-CN' },
       { name: '百度女声 (度小鹿)', value: 'baidu-103', lang: 'zh-CN' },
       { name: '百度男声 (度博文)', value: 'baidu-106', lang: 'zh-CN' },
@@ -1992,6 +1965,34 @@ class ScratchVoiceAssistant {
     voiceSelect.appendChild(chineseGroup);
   }
 
+  populateWidgetYoudaoVoices() {
+    const voiceSelect = this.widget.querySelector('#voiceSelectSetting');
+    if (!voiceSelect) return;
+
+    voiceSelect.innerHTML = '<option value="">选择语音</option>';
+
+    const youdaoVoices = [
+      { name: '有小智 (男声-标准)', value: 'youdao-youxiaozhi', lang: 'zh-CN' },
+      { name: '有小可 (女声-标准)', value: 'youdao-youxiaoke', lang: 'zh-CN' },
+      { name: '有小宇 (男声-标准)', value: 'youdao-youxiaoyu', lang: 'zh-CN' },
+      { name: '有小美 (女声-标准)', value: 'youdao-youxiaomei', lang: 'zh-CN' },
+      { name: '有小文 (男声-标准)', value: 'youdao-youxiaowen', lang: 'zh-CN' },
+      { name: '有小雅 (女声-标准)', value: 'youdao-youxiaoya', lang: 'zh-CN' }
+    ];
+
+    const chineseGroup = document.createElement('optgroup');
+    chineseGroup.label = '有道语音';
+
+    youdaoVoices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.value;
+      option.textContent = voice.name;
+      chineseGroup.appendChild(option);
+    });
+
+    voiceSelect.appendChild(chineseGroup);
+  }
+
   async loadWidgetSettings() {
     try {
       const result = await chrome.storage.sync.get(['settings']);
@@ -2000,7 +2001,7 @@ class ScratchVoiceAssistant {
         highlight: true,
         language: 'zh-CN',
         voiceEngine: 'baidu',
-        voiceSelect: 'baidu-110', // 度小童
+        voiceSelect: 'baidu-4140', // 度小新 - 专业女主播
         speechRate: 1.0,
         speechVolume: 0.8
       };
@@ -2026,7 +2027,7 @@ class ScratchVoiceAssistant {
       
       // 确保默认选择度小童
       if (voiceSelectSetting) {
-        voiceSelectSetting.value = settings.voiceSelect || 'baidu-110';
+        voiceSelectSetting.value = settings.voiceSelect || 'baidu-4140';
       }
       if (speechRateSetting) speechRateSetting.value = settings.speechRate;
       if (speechVolumeSetting) speechVolumeSetting.value = settings.speechVolume;
@@ -2359,7 +2360,7 @@ class ScratchVoiceAssistant {
         console.log('更新 TTS 设置:', ttsSettings);
         this.ttsService.updateSettings(ttsSettings);
 
-        await this.ttsService.speak(
+        await this.speak(
           text,
           () => console.log('语音测试开始'),
           () => console.log('语音测试完成'),
@@ -2368,82 +2369,27 @@ class ScratchVoiceAssistant {
       } else {
         console.log('TTS 服务未加载，使用浏览器 TTS');
         // 回退到浏览器 TTS
-        await this.fallbackBrowserTTS(settings, text);
+        await this.speak(text,
+          () => console.log('语音测试开始'),
+          () => console.log('语音测试完成'),
+          (error) => console.error('语音测试失败:', error)
+        );
       }
     } catch (error) {
       console.error('语音测试失败:', error);
       // 尝试浏览器 TTS 作为最后的回退
       try {
-        await this.fallbackBrowserTTS(settings, text);
+        await this.speak(text,
+          () => console.log('语音测试开始'),
+          () => console.log('语音测试完成'),
+          (error) => console.error('语音测试失败:', error)
+        );
       } catch (fallbackError) {
         console.error('浏览器 TTS 回退也失败:', fallbackError);
       }
     }
   }
 
-  // 浏览器 TTS 回退方法
-  async fallbackBrowserTTS(settings, text) {
-    return new Promise((resolve, reject) => {
-      try {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = settings.language || 'zh-CN';
-        utterance.rate = settings.speechRate || 1.0;
-        utterance.volume = settings.speechVolume || 0.8;
-
-        // 等待语音列表加载
-        let voices = speechSynthesis.getVoices();
-
-        const setupVoiceAndSpeak = () => {
-          voices = speechSynthesis.getVoices();
-          console.log('浏览器可用语音:', voices.length);
-
-          if (settings.voiceSelect && voices.length > 0) {
-            const selectedVoice = voices.find(voice => voice.name === settings.voiceSelect);
-            if (selectedVoice) {
-              utterance.voice = selectedVoice;
-              console.log('选择语音:', selectedVoice.name);
-            }
-          }
-
-          utterance.onstart = () => {
-            console.log('浏览器 TTS 开始播放');
-            resolve();
-          };
-
-          utterance.onend = () => {
-            console.log('浏览器 TTS 播放完成');
-          };
-
-          utterance.onerror = (error) => {
-            console.error('浏览器 TTS 错误:', error);
-            reject(error);
-          };
-
-          // 确保之前的语音已停止
-          if (speechSynthesis.speaking) {
-            speechSynthesis.cancel();
-          }
-
-          speechSynthesis.speak(utterance);
-        };
-
-        if (voices.length === 0) {
-          speechSynthesis.onvoiceschanged = setupVoiceAndSpeak;
-          // 设置超时
-          setTimeout(() => {
-            if (voices.length === 0) {
-              console.log('语音列表加载超时，使用默认设置');
-              setupVoiceAndSpeak();
-            }
-          }, 1000);
-        } else {
-          setupVoiceAndSpeak();
-        }
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
 
   // 初始化拖动功能
   initDragFunctionality() {

@@ -31,6 +31,9 @@ class PopupManager {
 
     // 加载设置
     this.loadSettings();
+    
+    // 更新TTS状态
+    this.updateTTSStatus();
   }
 
   async checkLicenseStatus() {
@@ -742,6 +745,11 @@ class PopupManager {
     const syncFirebaseBtn = document.getElementById('syncFirebaseBtn');
     const refreshTutorialsBtn = document.getElementById('refreshTutorialsBtn');
     
+    // 代理配置事件
+    const proxyEnabledSetting = document.getElementById('proxyEnabledSetting');
+    const proxyBaseUrlSetting = document.getElementById('proxyBaseUrlSetting');
+    const proxyTimeoutSetting = document.getElementById('proxyTimeoutSetting');
+    
     // 安全地绑定事件，检查元素是否存在
     if (autoPlaySetting) autoPlaySetting.addEventListener('change', () => this.saveSettings());
     if (highlightSetting) highlightSetting.addEventListener('change', () => this.saveSettings());
@@ -753,6 +761,11 @@ class PopupManager {
     if (testVoiceBtn) testVoiceBtn.addEventListener('click', () => this.testVoice());
     if (syncFirebaseBtn) syncFirebaseBtn.addEventListener('click', () => this.syncTutorialsToFirebase());
     if (refreshTutorialsBtn) refreshTutorialsBtn.addEventListener('click', () => this.refreshTutorials());
+    
+    // 代理配置事件监听
+    if (proxyEnabledSetting) proxyEnabledSetting.addEventListener('change', () => this.saveSettings());
+    if (proxyBaseUrlSetting) proxyBaseUrlSetting.addEventListener('change', () => this.saveSettings());
+    if (proxyTimeoutSetting) proxyTimeoutSetting.addEventListener('change', () => this.saveSettings());
 
     // 底部链接事件
     const helpLink = document.getElementById('helpLink');
@@ -909,15 +922,21 @@ class PopupManager {
 
   async loadSettings() {
     try {
-      const result = await chrome.storage.sync.get(['settings']);
+      const result = await chrome.storage.sync.get(['settings', 'proxyConfig']);
       const settings = result.settings || {
         autoPlay: false,
         highlight: true,
         language: 'zh-CN',
         voiceEngine: 'baidu',
-        voiceSelect: 'baidu-110', // 度小童
+        voiceSelect: 'baidu-4140', // 度小新 - 专业女主播
         speechRate: 1.0,
         speechVolume: 0.8
+      };
+
+      const proxyConfig = result.proxyConfig || {
+        enabled: true,
+        baseUrl: 'http://localhost:8000',
+        timeout: 10000
       };
 
       document.getElementById('autoPlaySetting').checked = settings.autoPlay;
@@ -927,6 +946,11 @@ class PopupManager {
       document.getElementById('speechRateSetting').value = settings.speechRate;
       document.getElementById('speechVolumeSetting').value = settings.speechVolume;
 
+      // 加载代理配置
+      document.getElementById('proxyEnabledSetting').checked = proxyConfig.enabled;
+      document.getElementById('proxyBaseUrlSetting').value = proxyConfig.baseUrl;
+      document.getElementById('proxyTimeoutSetting').value = proxyConfig.timeout;
+
       // 更新滑块显示值
       document.getElementById('speechRateValue').textContent = settings.speechRate + 'x';
       document.getElementById('speechVolumeValue').textContent = Math.round(settings.speechVolume * 100) + '%';
@@ -934,10 +958,55 @@ class PopupManager {
       // 根据语音引擎加载语音选项
       await this.loadVoiceOptions(settings.voiceEngine);
 
-      // 设置选中的语音，默认为度小童
-      document.getElementById('voiceSelectSetting').value = settings.voiceSelect || 'baidu-110';
+      // 设置选中的语音，根据引擎设置默认值
+      const defaultVoice = this.getDefaultVoice(settings.voiceEngine);
+      document.getElementById('voiceSelectSetting').value = settings.voiceSelect || defaultVoice;
+      
+      // 更新TTS状态
+      this.updateTTSStatus();
     } catch (error) {
       // 静默处理错误
+    }
+  }
+
+  // 获取默认语音
+  getDefaultVoice(voiceEngine) {
+    switch (voiceEngine) {
+      case 'baidu':
+        return 'baidu-4140'; // 度小新 - 专业女主播
+      case 'youdao':
+        return 'youdao-youxiaoqin'; // 有小沁
+      case 'google':
+        return 'zh-CN-Standard-A'; // Google中文女声
+      default:
+        return '';
+    }
+  }
+
+  // 更新TTS状态显示
+  updateTTSStatus() {
+    const ttsStatusElement = document.getElementById('ttsStatus');
+    if (!ttsStatusElement) return;
+    
+    try {
+      // 检查是否有配额限制错误
+      chrome.storage.local.get(['ttsQuotaError', 'ttsLastError'], (result) => {
+        if (result.ttsQuotaError) {
+          ttsStatusElement.textContent = '配额限制';
+          ttsStatusElement.style.color = '#ff6b6b';
+          ttsStatusElement.title = '百度TTS字符配额已达上限，将使用浏览器TTS';
+        } else if (result.ttsLastError) {
+          ttsStatusElement.textContent = '部分限制';
+          ttsStatusElement.style.color = '#ffa726';
+          ttsStatusElement.title = `TTS服务遇到问题: ${result.ttsLastError}`;
+        } else {
+          ttsStatusElement.textContent = '正常';
+          ttsStatusElement.style.color = '#4caf50';
+          ttsStatusElement.title = '语音服务运行正常';
+        }
+      });
+    } catch (error) {
+      console.warn('更新TTS状态失败:', error);
     }
   }
 
@@ -955,7 +1024,13 @@ class PopupManager {
         speechVolume: parseFloat(document.getElementById('speechVolumeSetting').value)
       };
 
-      await chrome.storage.sync.set({ settings });
+      const proxyConfig = {
+        enabled: document.getElementById('proxyEnabledSetting').checked,
+        baseUrl: document.getElementById('proxyBaseUrlSetting').value.trim(),
+        timeout: parseInt(document.getElementById('proxyTimeoutSetting').value)
+      };
+
+      await chrome.storage.sync.set({ settings, proxyConfig });
 
       // 通知 content script 设置已更新
       if (this.currentTab && this.isScratchEditor(this.currentTab.url)) {
@@ -1002,6 +1077,10 @@ class PopupManager {
 
   async showDebugInfo() {
     try {
+      // 创建调试窗口
+      const debugWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+      
+      // 生成基础调试信息
       let debugInfo = '=== 调试信息 ===\n\n';
       
       // 当前标签页信息
@@ -1069,21 +1148,428 @@ class PopupManager {
       debugInfo += '3. 检查扩展程序是否有权限访问该网站\n';
       debugInfo += '4. 确保在支持的页面格式下使用';
       
-      // 使用更好的显示方式
-      const debugWindow = window.open('', '_blank', 'width=600,height=400,scrollbars=yes');
+      // 创建包含TTS调试功能的调试页面
       debugWindow.document.write(`
         <html>
           <head>
-            <title>Scratch 语音助手 - 调试信息</title>
+            <title>Scratch 语音助手 - 调试工具</title>
             <style>
-              body { font-family: monospace; margin: 20px; line-height: 1.5; }
-              pre { background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                margin: 20px; 
+                line-height: 1.5; 
+                background-color: #f5f5f5;
+              }
+              .container {
+                background: white;
+                border-radius: 12px;
+                padding: 20px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                margin-bottom: 20px;
+              }
+              h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+              h3 { color: #555; margin-top: 20px; }
+              pre { 
+                background: #f5f5f5; 
+                padding: 15px; 
+                border-radius: 5px; 
+                overflow-x: auto; 
+                font-size: 12px;
+                border-left: 4px solid #007bff;
+              }
+              .tts-section {
+                margin-top: 20px;
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #dee2e6;
+              }
+              .form-group {
+                margin-bottom: 15px;
+              }
+              label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: 600;
+                color: #555;
+              }
+              input, textarea, select {
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-size: 14px;
+                box-sizing: border-box;
+              }
+              textarea {
+                resize: vertical;
+                min-height: 60px;
+              }
+              button {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                margin-right: 10px;
+                margin-bottom: 10px;
+              }
+              .btn-primary {
+                background-color: #007bff;
+                color: white;
+              }
+              .btn-primary:hover {
+                background-color: #0056b3;
+              }
+              .btn-primary:disabled {
+                background-color: #6c757d;
+                cursor: not-allowed;
+              }
+              .btn-secondary {
+                background-color: #6c757d;
+                color: white;
+              }
+              .btn-secondary:hover {
+                background-color: #545b62;
+              }
+              .status {
+                margin-top: 15px;
+                padding: 10px;
+                border-radius: 4px;
+                font-weight: 500;
+              }
+              .status.success {
+                background-color: #d4edda;
+                color: #155724;
+                border: 1px solid #c3e6cb;
+              }
+              .status.error {
+                background-color: #f8d7da;
+                color: #721c24;
+                border: 1px solid #f5c6cb;
+              }
+              .status.info {
+                background-color: #d1ecf1;
+                color: #0c5460;
+                border: 1px solid #bee5eb;
+              }
+              .status.loading {
+                background-color: #fff3cd;
+                color: #856404;
+                border: 1px solid #ffeaa7;
+              }
+              audio {
+                width: 100%;
+                margin-top: 10px;
+              }
+              .voice-options {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 10px;
+                margin-top: 10px;
+              }
+              .voice-option {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+                cursor: pointer;
+                text-align: center;
+                font-size: 12px;
+              }
+              .voice-option:hover {
+                border-color: #007bff;
+                background-color: #f8f9fa;
+              }
+              .voice-option.selected {
+                border-color: #007bff;
+                background-color: #e3f2fd;
+              }
+              .voice-option input[type="radio"] {
+                margin-right: 5px;
+              }
             </style>
           </head>
           <body>
-            <h2>Scratch 语音助手 - 调试信息</h2>
-            <pre>${debugInfo}</pre>
-            <button onclick="window.close()">关闭</button>
+            <div class="container">
+              <h2>🔧 Scratch 语音助手 - 调试工具</h2>
+              <pre>${debugInfo}</pre>
+            </div>
+            
+            <div class="container">
+              <h2>🎤 TTS 调试工具</h2>
+              <div class="tts-section">
+                <div class="form-group">
+                  <label for="ttsText">测试文本：</label>
+                  <textarea id="ttsText" placeholder="请输入要合成的文本，不超过60个字符..." maxlength="60">学会用 Scratch 的键盘检测、角色移动和说话积木，制作一个可以键盘控制猫咪移动并说话的互动程序！</textarea>
+                  <div id="charCount" style="text-align: right; font-size: 12px; color: #666; margin-top: 5px;">0/60 字符</div>
+                </div>
+                
+                <div class="form-group">
+                  <label>选择语音角色：</label>
+                  <div class="voice-options">
+                    <div class="voice-option" data-voice="baidu-0">
+                      <input type="radio" name="voice" value="baidu-0" id="voice-0">
+                      <label for="voice-0">度小美 (女声-标准)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-1">
+                      <input type="radio" name="voice" value="baidu-1" id="voice-1">
+                      <label for="voice-1">度小宇 (男声-标准)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-4140">
+                      <input type="radio" name="voice" value="baidu-4140" id="voice-3">
+                      <label for="voice-3">度小娇 (女声-甜美)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-4">
+                      <input type="radio" name="voice" value="baidu-4" id="voice-4">
+                      <label for="voice-4">度米朵 (男声-温和)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-103">
+                      <input type="radio" name="voice" value="baidu-103" id="voice-103">
+                      <label for="voice-103">度小鹿 (女声-温柔)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-106">
+                      <input type="radio" name="voice" value="baidu-106" id="voice-106">
+                      <label for="voice-106">度博文 (男声-磁性)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-110" selected>
+                      <input type="radio" name="voice" value="baidu-110" id="voice-110" checked>
+                      <label for="voice-110">度小童 (男声-童声)</label>
+                    </div>
+                    <div class="voice-option" data-voice="baidu-111">
+                      <input type="radio" name="voice" value="baidu-111" id="voice-111">
+                      <label for="voice-111">度小萌 (女声-可爱)</label>
+                    </div>
+                  </div>
+                </div>
+                
+                <button id="testTTSBtn" class="btn-primary">🎵 测试语音合成</button>
+                <button id="clearTTSBtn" class="btn-secondary">🗑️ 清空文本</button>
+                
+                <div id="ttsStatus" class="status" style="display: none;"></div>
+                
+                <div id="audioControls" style="display: none; margin-top: 15px;">
+                  <h3>生成的音频：</h3>
+                  <audio id="audioPlayer" controls></audio>
+                </div>
+                
+                <div id="ttsDebugInfo" style="display: none; margin-top: 15px;">
+                  <h3>调试信息：</h3>
+                  <pre id="ttsDebugContent"></pre>
+                </div>
+              </div>
+            </div>
+            
+            <div class="container">
+              <button onclick="window.close()" class="btn-secondary">关闭调试窗口</button>
+            </div>
+            
+            <script>
+              class TTSDebugger {
+                constructor() {
+                  this.textInput = document.getElementById('ttsText');
+                  this.charCount = document.getElementById('charCount');
+                  this.testBtn = document.getElementById('testTTSBtn');
+                  this.clearBtn = document.getElementById('clearTTSBtn');
+                  this.status = document.getElementById('ttsStatus');
+                  this.audioControls = document.getElementById('audioControls');
+                  this.audioPlayer = document.getElementById('audioPlayer');
+                  this.debugInfo = document.getElementById('ttsDebugInfo');
+                  this.debugContent = document.getElementById('ttsDebugContent');
+                  
+                  this.init();
+                }
+                
+                init() {
+                  this.updateCharCount();
+                  
+                  // 绑定事件
+                  this.textInput.addEventListener('input', () => this.updateCharCount());
+                  this.testBtn.addEventListener('click', () => this.testTTS());
+                  this.clearBtn.addEventListener('click', () => this.clearText());
+                  
+                  // 语音选择事件
+                  document.querySelectorAll('.voice-option').forEach(option => {
+                    option.addEventListener('click', () => this.selectVoice(option));
+                  });
+                  
+                  // 默认选择度小童
+                  document.querySelector('[data-voice="baidu-110"]').classList.add('selected');
+                }
+                
+                updateCharCount() {
+                  const count = this.textInput.value.length;
+                  const maxCount = 60;
+                  this.charCount.textContent = \`\${count}/\${maxCount} 字符\`;
+                  
+                  if (count > maxCount) {
+                    this.charCount.style.color = '#dc3545';
+                  } else if (count > maxCount * 0.8) {
+                    this.charCount.style.color = '#ff6b35';
+                  } else {
+                    this.charCount.style.color = '#666';
+                  }
+                }
+                
+                selectVoice(option) {
+                  // 移除所有选中状态
+                  document.querySelectorAll('.voice-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                  });
+                  
+                  // 添加选中状态
+                  option.classList.add('selected');
+                  
+                  // 选中对应的radio按钮
+                  const radio = option.querySelector('input[type="radio"]');
+                  radio.checked = true;
+                }
+                
+                clearText() {
+                  this.textInput.value = '';
+                  this.updateCharCount();
+                  this.hideStatus();
+                  this.hideAudioControls();
+                  this.hideDebugInfo();
+                }
+                
+                showStatus(message, type = 'info') {
+                  this.status.textContent = message;
+                  this.status.className = \`status \${type}\`;
+                  this.status.style.display = 'block';
+                }
+                
+                hideStatus() {
+                  this.status.style.display = 'none';
+                }
+                
+                showAudioControls(audioData) {
+                  this.audioPlayer.src = audioData;
+                  this.audioControls.style.display = 'block';
+                }
+                
+                hideAudioControls() {
+                  this.audioControls.style.display = 'none';
+                }
+                
+                showDebugInfo(info) {
+                  this.debugContent.textContent = JSON.stringify(info, null, 2);
+                  this.debugInfo.style.display = 'block';
+                }
+                
+                hideDebugInfo() {
+                  this.debugInfo.style.display = 'none';
+                }
+                
+                async testTTS() {
+                  const text = this.textInput.value.trim();
+                  if (!text) {
+                    this.showStatus('请输入要合成的文本！', 'error');
+                    return;
+                  }
+                  
+                  if (text.length > 60) {
+                    this.showStatus('文本长度不能超过60个字符！', 'error');
+                    return;
+                  }
+                  
+                  const selectedVoice = document.querySelector('input[name="voice"]:checked');
+                  if (!selectedVoice) {
+                    this.showStatus('请选择语音角色！', 'error');
+                    return;
+                  }
+                  
+                  this.testBtn.disabled = true;
+                  this.testBtn.textContent = '🔄 合成中...';
+                  this.showStatus('正在调用百度TTS API...', 'loading');
+                  this.hideAudioControls();
+                  this.hideDebugInfo();
+                  
+                  try {
+                    const startTime = Date.now();
+                    
+                    // 构建请求参数
+                    const settings = {
+                      voice: selectedVoice.value,
+                      speed: 5,
+                      volume: 5,
+                      language: 'zh-CN'
+                    };
+                    
+                    console.log('发送TTS请求:', { text, settings });
+                    
+                    // 发送消息到background script
+                    const response = await chrome.runtime.sendMessage({
+                      action: 'fetchTTSAudio',
+                      engine: 'baidu',
+                      text: text,
+                      settings: settings
+                    });
+                    
+                    const endTime = Date.now();
+                    const duration = endTime - startTime;
+                    
+                    console.log('TTS响应:', response);
+                    console.log(\`请求耗时: \${duration}ms\`);
+                    
+                    if (!response || !response.success) {
+                      throw new Error(response?.error || 'TTS请求失败：Background script 无响应');
+                    }
+                    
+                    if (!response.audioData) {
+                      throw new Error('TTS返回的音频数据为空');
+                    }
+                    
+                    // 显示成功状态
+                    this.showStatus(\`✅ 语音合成成功！耗时: \${duration}ms\`, 'success');
+                    
+                    // 显示音频控件
+                    this.showAudioControls(response.audioData);
+                    
+                    // 显示调试信息
+                    this.showDebugInfo({
+                      request: {
+                        text: text,
+                        settings: settings,
+                        textLength: text.length
+                      },
+                      response: {
+                        success: response.success,
+                        audioDataLength: response.audioData?.length || 0,
+                        duration: \`\${duration}ms\`
+                      },
+                      timestamp: new Date().toISOString()
+                    });
+                    
+                  } catch (error) {
+                    console.error('TTS测试失败:', error);
+                    this.showStatus(\`❌ 语音合成失败: \${error.message}\`, 'error');
+                    
+                    // 显示错误调试信息
+                    this.showDebugInfo({
+                      error: {
+                        message: error.message,
+                        stack: error.stack
+                      },
+                      request: {
+                        text: text,
+                        settings: settings,
+                        textLength: text.length
+                      },
+                      timestamp: new Date().toISOString()
+                    });
+                  } finally {
+                    this.testBtn.disabled = false;
+                    this.testBtn.textContent = '🎵 测试语音合成';
+                  }
+                }
+              }
+              
+              // 初始化TTS调试器
+              document.addEventListener('DOMContentLoaded', () => {
+                new TTSDebugger();
+              });
+            </script>
           </body>
         </html>
       `);
@@ -1109,7 +1595,11 @@ class PopupManager {
         this.populateGoogleVoices();
         break;
       case 'baidu':
-        this.populateBaiduVoices();
+        // 百度TTS直接使用固定角色，不需要选择
+        this.setFixedBaiduVoice();
+        break;
+      case 'youdao':
+        this.populateYoudaoVoices();
         break;
       default:
         await this.loadBrowserVoices();
@@ -1204,28 +1694,65 @@ class PopupManager {
     voiceSelect.appendChild(chineseGroup);
   }
 
+  setFixedBaiduVoice() {
+    const voiceSelect = document.getElementById('voiceSelectSetting');
+    voiceSelect.innerHTML = '<option value="baidu-4140">度小新 (专业女主播)</option>';
+    voiceSelect.value = 'baidu-4140';
+  }
+
   populateBaiduVoices() {
     const voiceSelect = document.getElementById('voiceSelectSetting');
     voiceSelect.innerHTML = '<option value="">选择语音</option>';
 
     const baiduVoices = [
-      { name: '百度女声 (度小美)', value: 'baidu-0', lang: 'zh-CN' },
-      { name: '百度男声 (度小宇)', value: 'baidu-1', lang: 'zh-CN' },
-      { name: '百度女声 (度小娇)', value: 'baidu-3', lang: 'zh-CN' },
-      { name: '百度男声 (度米朵)', value: 'baidu-4', lang: 'zh-CN' },
-      { name: '百度女声 (度小鹿)', value: 'baidu-103', lang: 'zh-CN' },
-      { name: '百度男声 (度博文)', value: 'baidu-106', lang: 'zh-CN' },
-      { name: '百度女声 (度小童)', value: 'baidu-110', lang: 'zh-CN' },
-      { name: '百度女声 (度小萌)', value: 'baidu-111', lang: 'zh-CN' }
+      { name: '度小美 (女声-标准)', value: 'baidu-0', lang: 'zh-CN', description: '清晰自然的女声' },
+      { name: '度小宇 (男声-标准)', value: 'baidu-1', lang: 'zh-CN', description: '沉稳的男声' },
+      { name: '度小娇 (女声-甜美)', value: 'baidu-4140', lang: 'zh-CN', description: '甜美的女声' },
+      { name: '度米朵 (男声-温和)', value: 'baidu-4', lang: 'zh-CN', description: '温和的男声' },
+      { name: '度小鹿 (女声-温柔)', value: 'baidu-103', lang: 'zh-CN', description: '温柔的女声' },
+      { name: '度博文 (男声-磁性)', value: 'baidu-106', lang: 'zh-CN', description: '磁性的男声' },
+      { name: '度小童 (男声-童声)', value: 'baidu-110', lang: 'zh-CN', description: '活泼的童声，适合教学' },
+      { name: '度小萌 (女声-可爱)', value: 'baidu-111', lang: 'zh-CN', description: '可爱的女声' }
     ];
 
     const chineseGroup = document.createElement('optgroup');
-    chineseGroup.label = '百度语音';
+    chineseGroup.label = '百度语音 - 中文音色';
 
     baiduVoices.forEach(voice => {
       const option = document.createElement('option');
       option.value = voice.value;
       option.textContent = voice.name;
+      option.title = voice.description; // 添加悬停提示
+      chineseGroup.appendChild(option);
+    });
+
+    voiceSelect.appendChild(chineseGroup);
+  }
+
+  populateYoudaoVoices() {
+    const voiceSelect = document.getElementById('voiceSelectSetting');
+    voiceSelect.innerHTML = '<option value="">选择语音</option>';
+
+    const youdaoVoices = [
+      { name: '有小智 (男声-标准)', value: 'youdao-youxiaozhi', lang: 'zh-CN', description: '清晰自然的男声' },
+      { name: '有小薰 (女声-标准)', value: 'youdao-youxiaoxun', lang: 'zh-CN', description: '清晰自然的女声' },
+      { name: '有小沁 (女声-甜美)', value: 'youdao-youxiaoqin', lang: 'zh-CN', description: '甜美的女声' },
+      { name: '有小芙 (女声-温柔)', value: 'youdao-youxiaofu', lang: 'zh-CN', description: '温柔的女声' },
+      { name: '有雨婷 (女声-优雅)', value: 'youdao-youyuting', lang: 'zh-CN', description: '优雅的女声' },
+      { name: '有小浩 (男声-沉稳)', value: 'youdao-youxiaohao', lang: 'zh-CN', description: '沉稳的男声' },
+      { name: '有小楠 (男声-温和)', value: 'youdao-youxiaonan', lang: 'zh-CN', description: '温和的男声' },
+      { name: '有小课 (男声-教学)', value: 'youdao-youxiaoke', lang: 'zh-CN', description: '适合教学场景的男声' },
+      { name: '有小贝 (女声-可爱)', value: 'youdao-youxiaobei', lang: 'zh-CN', description: '可爱的女声' }
+    ];
+
+    const chineseGroup = document.createElement('optgroup');
+    chineseGroup.label = '有道语音 - 中文音色';
+
+    youdaoVoices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.value;
+      option.textContent = voice.name;
+      option.title = voice.description; // 添加悬停提示
       chineseGroup.appendChild(option);
     });
 
@@ -1337,7 +1864,11 @@ class PopupManager {
             setupAndSpeak();
           }
         } else if (settings.voiceEngine === 'baidu') {
-          this.testBaiduVoice(settings, '这是百度语音测试，你好！')
+          this.testBaiduVoice(settings, '学会用 Scratch 的键盘检测、角色移动和说话积木，制作一个可以键盘控制猫咪移动并说话的互动程序！')
+            .then(resolve)
+            .catch(reject);
+        } else if (settings.voiceEngine === 'youdao') {
+          this.testYoudaoVoice(settings, '这是有道语音测试，你好！')
             .then(resolve)
             .catch(reject);
         } else {
@@ -1373,7 +1904,8 @@ class PopupManager {
       audio.volume = settings.speechVolume;
       
       return new Promise((resolve, reject) => {
-        audio.onloadstart = () => {
+        audio.onplay = () => {
+          console.log('百度TTS开始播放');
           resolve();
         };
 
@@ -1381,7 +1913,8 @@ class PopupManager {
           console.log('百度TTS播放完成');
         };
 
-        audio.onerror = () => {
+        audio.onerror = (error) => {
+          console.error('百度TTS播放错误:', error);
           reject(new Error('百度TTS播放失败'));
         };
 
@@ -1390,6 +1923,55 @@ class PopupManager {
       });
     } catch (error) {
       throw new Error(`百度TTS测试失败: ${error.message}`);
+    }
+  }
+
+  async testYoudaoVoice(settings, text) {
+    try {
+      console.log('测试有道TTS，原始设置:', settings);
+      
+      const ttsSettings = {
+        voice: settings.voiceSelect,
+        speed: settings.speechRate,
+        volume: settings.speechVolume,
+        language: settings.language
+      };
+      
+      console.log('发送给background script的设置:', ttsSettings);
+      
+      // 通过background service worker获取音频（解决CORS问题）
+      const response = await chrome.runtime.sendMessage({
+        action: 'fetchTTSAudio',
+        engine: 'youdao',
+        text: text,
+        settings: ttsSettings
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error || '有道TTS 请求失败：Background script 无响应');
+      }
+
+      const audio = new Audio();
+      audio.volume = settings.speechVolume;
+      
+      return new Promise((resolve, reject) => {
+        audio.onloadstart = () => {
+          resolve();
+        };
+
+        audio.onended = () => {
+          console.log('有道TTS播放完成');
+        };
+
+        audio.onerror = () => {
+          reject(new Error('有道TTS播放失败'));
+        };
+
+        audio.src = response.audioData;
+        audio.play().catch(reject);
+      });
+    } catch (error) {
+      throw new Error(`有道TTS测试失败: ${error.message}`);
     }
   }
 

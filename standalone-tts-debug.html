@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>独立TTS调试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+        
+        input[type="text"]:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .voice-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .voice-option {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+        
+        .voice-option:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        
+        .voice-option.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        
+        .voice-option input[type="radio"] {
+            margin-right: 8px;
+        }
+        
+        .voice-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .voice-description {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        
+        .btn-primary:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .status.loading {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .audio-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .debug-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .debug-info h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .debug-info pre {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        
+        .character-count {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .character-count.warning {
+            color: #ff6b35;
+        }
+        
+        .character-count.error {
+            color: #dc3545;
+        }
+        
+        .api-config {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .api-config h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        
+        .api-config input {
+            margin-bottom: 10px;
+        }
+        
+        .tts-engine-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .engine-option {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .engine-option:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        
+        .engine-option.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        
+        .engine-option input[type="radio"] {
+            margin-right: 5px;
+        }
+        
+        .voice-category {
+            margin-bottom: 25px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .category-title {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .voice-category .voice-options {
+            padding: 15px;
+            background-color: #fafbfc;
+        }
+        
+        .voice-category .voice-option {
+            background-color: white;
+            border: 1px solid #e9ecef;
+            margin-bottom: 10px;
+        }
+        
+        .voice-category .voice-option:last-child {
+            margin-bottom: 0;
+        }
+        
+        .voice-category .voice-option:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 123, 255, 0.1);
+        }
+        
+        .voice-category .voice-option.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 独立TTS调试页面</h1>
+        
+        <div class="api-config">
+            <h3>🔑 API配置</h3>
+            <div class="form-group">
+                <label for="baiduAK">百度API Key (AK):</label>
+                <input type="text" id="baiduAK" placeholder="请输入百度API Key" value="FeNVdlSqSTt9IO3Bz4SCDiVj">
+            </div>
+            <div class="form-group">
+                <label for="baiduSK">百度Secret Key (SK):</label>
+                <input type="text" id="baiduSK" placeholder="请输入百度Secret Key" value="NL9bpxsOt7pxf1m3v43G5vPD5CIjoSFo">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>TTS引擎选择：</label>
+            <div class="tts-engine-selector">
+                <div class="engine-option" data-engine="baidu">
+                    <input type="radio" name="engine" value="baidu" id="engine-baidu" checked>
+                    <label for="engine-baidu">百度TTS</label>
+                </div>
+                <div class="engine-option" data-engine="browser">
+                    <input type="radio" name="engine" value="browser" id="engine-browser">
+                    <label for="engine-browser">浏览器TTS</label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="textInput">要合成的文本：</label>
+            <textarea id="textInput" placeholder="请输入要合成的文本，不超过60个字符..." maxlength="60"></textarea>
+            <div id="charCount" class="character-count">0/60 字符</div>
+        </div>
+        
+        <div class="form-group" id="baiduVoiceSection">
+            <label>选择语音角色：</label>
+            
+            <!-- 基础音库 -->
+            <div class="voice-category">
+                <h4 class="category-title">🎵 基础音库</h4>
+                <div class="voice-options">
+                    <div class="voice-option" data-voice="baidu-0">
+                        <input type="radio" name="voice" value="baidu-0" id="voice-0">
+                        <label for="voice-0">
+                            <div class="voice-name">度小美 (标准女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-1">
+                        <input type="radio" name="voice" value="baidu-1" id="voice-1">
+                        <label for="voice-1">
+                            <div class="voice-name">度小宇 (亲切男声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4140">
+                        <input type="radio" name="voice" value="baidu-4140" id="voice-3">
+                        <label for="voice-3">
+                            <div class="voice-name">度逍遥 (情感男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4">
+                        <input type="radio" name="voice" value="baidu-4" id="voice-4">
+                        <label for="voice-4">
+                            <div class="voice-name">度丫丫 (童声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 精品音库 -->
+            <div class="voice-category">
+                <h4 class="category-title">⭐ 精品音库</h4>
+                <div class="voice-options">
+                    <div class="voice-option" data-voice="baidu-5003">
+                        <input type="radio" name="voice" value="baidu-5003" id="voice-5003">
+                        <label for="voice-5003">
+                            <div class="voice-name">度逍遥 (情感男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-5118">
+                        <input type="radio" name="voice" value="baidu-5118" id="voice-5118">
+                        <label for="voice-5118">
+                            <div class="voice-name">度小鹿 (甜美女声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-106">
+                        <input type="radio" name="voice" value="baidu-106" id="voice-106">
+                        <label for="voice-106">
+                            <div class="voice-name">度博文 (专业男主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-103">
+                        <input type="radio" name="voice" value="baidu-103" id="voice-103">
+                        <label for="voice-103">
+                            <div class="voice-name">度米朵 (可爱童声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-110" checked>
+                        <input type="radio" name="voice" value="baidu-110" id="voice-110">
+                        <label for="voice-110">
+                            <div class="voice-name">度小童 (童声主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-111">
+                        <input type="radio" name="voice" value="baidu-111" id="voice-111">
+                        <label for="voice-111">
+                            <div class="voice-name">度小萌 (软萌妹子)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-5">
+                        <input type="radio" name="voice" value="baidu-5" id="voice-5">
+                        <label for="voice-5">
+                            <div class="voice-name">度小娇 (成熟女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 臻品音库 -->
+            <div class="voice-category">
+                <h4 class="category-title">💎 臻品音库</h4>
+                <div class="voice-options">
+                    <div class="voice-option" data-voice="baidu-4003">
+                        <input type="radio" name="voice" value="baidu-4003" id="voice-4003">
+                        <label for="voice-4003">
+                            <div class="voice-name">度逍遥 (情感男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4106">
+                        <input type="radio" name="voice" value="baidu-4106" id="voice-4106">
+                        <label for="voice-4106">
+                            <div class="voice-name">度博文 (专业男主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4115">
+                        <input type="radio" name="voice" value="baidu-4115" id="voice-4115">
+                        <label for="voice-4115">
+                            <div class="voice-name">度小贤 (电台男主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-5147">
+                        <input type="radio" name="voice" value="baidu-5147" id="voice-5147">
+                        <label for="voice-5147">
+                            <div class="voice-name">度常盈 (电台女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-5976">
+                        <input type="radio" name="voice" value="baidu-5976" id="voice-5976">
+                        <label for="voice-5976">
+                            <div class="voice-name">度小皮 (萌娃童声)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-5971">
+                        <input type="radio" name="voice" value="baidu-5971" id="voice-5971">
+                        <label for="voice-5971">
+                            <div class="voice-name">度皮特 (老外男声)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4164">
+                        <input type="radio" name="voice" value="baidu-4164" id="voice-4164">
+                        <label for="voice-4164">
+                            <div class="voice-name">度阿肯 (主播男声)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4176">
+                        <input type="radio" name="voice" value="baidu-4176" id="voice-4176">
+                        <label for="voice-4176">
+                            <div class="voice-name">度有为 (磁性男声)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4259">
+                        <input type="radio" name="voice" value="baidu-4259" id="voice-4259">
+                        <label for="voice-4259">
+                            <div class="voice-name">度小新 (播音女声)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4119">
+                        <input type="radio" name="voice" value="baidu-4119" id="voice-4119">
+                        <label for="voice-4119">
+                            <div class="voice-name">度小鹿 (甜美女声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4105">
+                        <input type="radio" name="voice" value="baidu-4105" id="voice-4105">
+                        <label for="voice-4105">
+                            <div class="voice-name">度灵儿 (清激女声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4117">
+                        <input type="radio" name="voice" value="baidu-4117" id="voice-4117">
+                        <label for="voice-4117">
+                            <div class="voice-name">度小乔 (活泼女声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4288">
+                        <input type="radio" name="voice" value="baidu-4288" id="voice-4288">
+                        <label for="voice-4288">
+                            <div class="voice-name">度晴岚 (甜美女声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4192">
+                        <input type="radio" name="voice" value="baidu-4192" id="voice-4192">
+                        <label for="voice-4192">
+                            <div class="voice-name">度青川 (温柔男声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4100">
+                        <input type="radio" name="voice" value="baidu-4100" id="voice-4100">
+                        <label for="voice-4100">
+                            <div class="voice-name">度小雯 (活力女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4103">
+                        <input type="radio" name="voice" value="baidu-4103" id="voice-4103">
+                        <label for="voice-4103">
+                            <div class="voice-name">度米朵 (可爱女声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4144">
+                        <input type="radio" name="voice" value="baidu-4144" id="voice-4144">
+                        <label for="voice-4144">
+                            <div class="voice-name">度姗姗 (娱乐女声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4278">
+                        <input type="radio" name="voice" value="baidu-4278" id="voice-4278">
+                        <label for="voice-4278">
+                            <div class="voice-name">度小贝 (知识女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4143">
+                        <input type="radio" name="voice" value="baidu-4143" id="voice-4143">
+                        <label for="voice-4143">
+                            <div class="voice-name">度清风 (配音男声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4140">
+                        <input type="radio" name="voice" value="baidu-4140" id="voice-4140">
+                        <label for="voice-4140">
+                            <div class="voice-name">度小新 (专业女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4129">
+                        <input type="radio" name="voice" value="baidu-4129" id="voice-4129">
+                        <label for="voice-4129">
+                            <div class="voice-name">度小彦 (知识男主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4149">
+                        <input type="radio" name="voice" value="baidu-4149" id="voice-4149">
+                        <label for="voice-4149">
+                            <div class="voice-name">度星河 (广告男声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4254">
+                        <input type="radio" name="voice" value="baidu-4254" id="voice-4254">
+                        <label for="voice-4254">
+                            <div class="voice-name">度小清 (广告女声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4206">
+                        <input type="radio" name="voice" value="baidu-4206" id="voice-4206">
+                        <label for="voice-4206">
+                            <div class="voice-name">度博文 (综艺男声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4147">
+                        <input type="radio" name="voice" value="baidu-4147" id="voice-4147">
+                        <label for="voice-4147">
+                            <div class="voice-name">度云朵 (可爱童声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4141">
+                        <input type="radio" name="voice" value="baidu-4141" id="voice-4141">
+                        <label for="voice-4141">
+                            <div class="voice-name">度婉婉 (甜美女声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4226">
+                        <input type="radio" name="voice" value="baidu-4226" id="voice-4226">
+                        <label for="voice-4226">
+                            <div class="voice-name">南方 (电台女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6205">
+                        <input type="radio" name="voice" value="baidu-6205" id="voice-6205">
+                        <label for="voice-6205">
+                            <div class="voice-name">度悠然 (旁白男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6221">
+                        <input type="radio" name="voice" value="baidu-6221" id="voice-6221">
+                        <label for="voice-6221">
+                            <div class="voice-name">度云萱 (旁白女声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6546">
+                        <input type="radio" name="voice" value="baidu-6546" id="voice-6546">
+                        <label for="voice-6546">
+                            <div class="voice-name">度清豪 (逍遥侠客)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6602">
+                        <input type="radio" name="voice" value="baidu-6602" id="voice-6602">
+                        <label for="voice-6602">
+                            <div class="voice-name">度清柔 (温柔男神)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6562">
+                        <input type="radio" name="voice" value="baidu-6562" id="voice-6562">
+                        <label for="voice-6562">
+                            <div class="voice-name">度雨楠 (元气少女)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6543">
+                        <input type="radio" name="voice" value="baidu-6543" id="voice-6543">
+                        <label for="voice-6543">
+                            <div class="voice-name">度雨萌 (邻家女孩)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6747">
+                        <input type="radio" name="voice" value="baidu-6747" id="voice-6747">
+                        <label for="voice-6747">
+                            <div class="voice-name">度书古 (情感男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6748">
+                        <input type="radio" name="voice" value="baidu-6748" id="voice-6748">
+                        <label for="voice-6748">
+                            <div class="voice-name">度书严 (沉稳男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6746">
+                        <input type="radio" name="voice" value="baidu-6746" id="voice-6746">
+                        <label for="voice-6746">
+                            <div class="voice-name">度书道 (沉稳男声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6644">
+                        <input type="radio" name="voice" value="baidu-6644" id="voice-6644">
+                        <label for="voice-6644">
+                            <div class="voice-name">度书宁 (亲和女声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4148">
+                        <input type="radio" name="voice" value="baidu-4148" id="voice-4148">
+                        <label for="voice-4148">
+                            <div class="voice-name">度小夏 (甜美女声)</div>
+                            <div class="voice-description">小说 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4277">
+                        <input type="radio" name="voice" value="baidu-4277" id="voice-4277">
+                        <label for="voice-4277">
+                            <div class="voice-name">西贝 (脱口秀女声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-4114">
+                        <input type="radio" name="voice" value="baidu-4114" id="voice-4114">
+                        <label for="voice-4114">
+                            <div class="voice-name">阿龙 (说书男声)</div>
+                            <div class="voice-description">配音 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-5153">
+                        <input type="radio" name="voice" value="baidu-5153" id="voice-5153">
+                        <label for="voice-5153">
+                            <div class="voice-name">度常悦 (民生女主播)</div>
+                            <div class="voice-description">资讯 | 中文/英文</div>
+                        </label>
+                    </div>
+                    
+                    <div class="voice-option" data-voice="baidu-6561">
+                        <input type="radio" name="voice" value="baidu-6561" id="voice-6561">
+                        <label for="voice-6561">
+                            <div class="voice-name">度小乐 (可爱童声)</div>
+                            <div class="voice-description">对话助手 | 中文/英文</div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-group" id="browserVoiceSection" style="display: none;">
+            <label for="browserVoiceSelect">选择语音：</label>
+            <select id="browserVoiceSelect">
+                <option value="">加载中...</option>
+            </select>
+        </div>
+        
+        <div class="controls">
+            <button id="testBtn" class="btn-primary">🎵 测试语音合成</button>
+            <button id="clearBtn" class="btn-secondary">🗑️ 清空文本</button>
+            <button id="testTokenBtn" class="btn-success">🔑 测试API Token</button>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="audio-controls" id="audioControls" style="display: none;">
+            <h3>生成的音频：</h3>
+            <audio id="audioPlayer" controls></audio>
+        </div>
+        
+        <div class="debug-info" id="debugInfo" style="display: none;">
+            <h3>调试信息：</h3>
+            <pre id="debugContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        class StandaloneTTSDebugger {
+            constructor() {
+                this.textInput = document.getElementById('textInput');
+                this.charCount = document.getElementById('charCount');
+                this.testBtn = document.getElementById('testBtn');
+                this.clearBtn = document.getElementById('clearBtn');
+                this.testTokenBtn = document.getElementById('testTokenBtn');
+                this.status = document.getElementById('status');
+                this.audioControls = document.getElementById('audioControls');
+                this.audioPlayer = document.getElementById('audioPlayer');
+                this.debugInfo = document.getElementById('debugInfo');
+                this.debugContent = document.getElementById('debugContent');
+                this.baiduAK = document.getElementById('baiduAK');
+                this.baiduSK = document.getElementById('baiduSK');
+                this.browserVoiceSelect = document.getElementById('browserVoiceSelect');
+                this.baiduVoiceSection = document.getElementById('baiduVoiceSection');
+                this.browserVoiceSection = document.getElementById('browserVoiceSection');
+                
+                this.init();
+            }
+            
+            init() {
+                // 设置默认文本
+                this.textInput.value = '学会用 Scratch 的键盘检测、角色移动和说话积木，制作一个可以键盘控制猫咪移动并说话的互动程序！';
+                this.updateCharCount();
+                
+                // 绑定事件
+                this.textInput.addEventListener('input', () => this.updateCharCount());
+                this.testBtn.addEventListener('click', () => this.testTTS());
+                this.clearBtn.addEventListener('click', () => this.clearText());
+                this.testTokenBtn.addEventListener('click', () => this.testBaiduToken());
+                
+                // 语音选择事件
+                document.querySelectorAll('.voice-option').forEach(option => {
+                    option.addEventListener('click', () => this.selectVoice(option));
+                });
+                
+                // 引擎选择事件
+                document.querySelectorAll('.engine-option').forEach(option => {
+                    option.addEventListener('click', () => this.selectEngine(option));
+                });
+                
+                // 默认选择度小童（精品音库）
+                document.querySelector('[data-voice="baidu-110"]').classList.add('selected');
+                document.querySelector('[data-engine="baidu"]').classList.add('selected');
+                
+                // 加载浏览器语音
+                this.loadBrowserVoices();
+            }
+            
+            updateCharCount() {
+                const count = this.textInput.value.length;
+                const maxCount = 60;
+                this.charCount.textContent = `${count}/${maxCount} 字符`;
+                
+                if (count > maxCount) {
+                    this.charCount.className = 'character-count error';
+                } else if (count > maxCount * 0.8) {
+                    this.charCount.className = 'character-count warning';
+                } else {
+                    this.charCount.className = 'character-count';
+                }
+            }
+            
+            selectVoice(option) {
+                // 移除所有选中状态
+                document.querySelectorAll('.voice-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                
+                // 添加选中状态
+                option.classList.add('selected');
+                
+                // 选中对应的radio按钮
+                const radio = option.querySelector('input[type="radio"]');
+                radio.checked = true;
+            }
+            
+            selectEngine(option) {
+                // 移除所有选中状态
+                document.querySelectorAll('.engine-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                
+                // 添加选中状态
+                option.classList.add('selected');
+                
+                // 选中对应的radio按钮
+                const radio = option.querySelector('input[type="radio"]');
+                radio.checked = true;
+                
+                // 显示/隐藏相应的语音选择区域
+                const engine = radio.value;
+                if (engine === 'baidu') {
+                    this.baiduVoiceSection.style.display = 'block';
+                    this.browserVoiceSection.style.display = 'none';
+                } else {
+                    this.baiduVoiceSection.style.display = 'none';
+                    this.browserVoiceSection.style.display = 'block';
+                }
+            }
+            
+            async loadBrowserVoices() {
+                try {
+                    // 等待语音列表加载
+                    await new Promise(resolve => {
+                        if (speechSynthesis.getVoices().length > 0) {
+                            resolve();
+                        } else {
+                            speechSynthesis.addEventListener('voiceschanged', resolve, { once: true });
+                        }
+                    });
+                    
+                    const voices = speechSynthesis.getVoices();
+                    const chineseVoices = voices.filter(voice => 
+                        voice.lang.startsWith('zh') || 
+                        voice.name.includes('Chinese') || 
+                        voice.name.includes('中文')
+                    );
+                    
+                    this.browserVoiceSelect.innerHTML = '';
+                    
+                    if (chineseVoices.length > 0) {
+                        chineseVoices.forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            this.browserVoiceSelect.appendChild(option);
+                        });
+                    } else {
+                        // 如果没有中文语音，显示所有语音
+                        voices.forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            this.browserVoiceSelect.appendChild(option);
+                        });
+                    }
+                    
+                    console.log('加载了', voices.length, '个浏览器语音，其中', chineseVoices.length, '个中文语音');
+                } catch (error) {
+                    console.error('加载浏览器语音失败:', error);
+                    this.browserVoiceSelect.innerHTML = '<option value="">加载失败</option>';
+                }
+            }
+            
+            clearText() {
+                this.textInput.value = '';
+                this.updateCharCount();
+                this.hideStatus();
+                this.hideAudioControls();
+                this.hideDebugInfo();
+            }
+            
+            showStatus(message, type = 'info') {
+                this.status.textContent = message;
+                this.status.className = `status ${type}`;
+                this.status.style.display = 'block';
+            }
+            
+            hideStatus() {
+                this.status.style.display = 'none';
+            }
+            
+            showAudioControls(audioData) {
+                this.audioPlayer.src = audioData;
+                this.audioControls.style.display = 'block';
+            }
+            
+            hideAudioControls() {
+                this.audioControls.style.display = 'none';
+            }
+            
+            showDebugInfo(info) {
+                this.debugContent.textContent = JSON.stringify(info, null, 2);
+                this.debugInfo.style.display = 'block';
+            }
+            
+            hideDebugInfo() {
+                this.debugInfo.style.display = 'none';
+            }
+            
+            async testBaiduToken() {
+                const ak = this.baiduAK.value.trim();
+                const sk = this.baiduSK.value.trim();
+                
+                if (!ak || !sk) {
+                    this.showStatus('请输入百度API Key和Secret Key！', 'error');
+                    return;
+                }
+                
+                this.testTokenBtn.disabled = true;
+                this.testTokenBtn.textContent = '🔄 测试中...';
+                this.showStatus('正在测试百度API Token...', 'loading');
+                
+                try {
+                    const token = await this.getBaiduAccessToken(ak, sk);
+                    this.showStatus(`✅ API Token测试成功！Token: ${token.substring(0, 20)}...`, 'success');
+                    
+                    this.showDebugInfo({
+                        success: true,
+                        token: token.substring(0, 20) + '...',
+                        fullTokenLength: token.length,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (error) {
+                    console.error('Token测试失败:', error);
+                    this.showStatus(`❌ API Token测试失败: ${error.message}`, 'error');
+                    
+                    this.showDebugInfo({
+                        error: {
+                            message: error.message,
+                            stack: error.stack
+                        },
+                        ak: ak.substring(0, 10) + '...',
+                        sk: sk.substring(0, 10) + '...',
+                        timestamp: new Date().toISOString()
+                    });
+                } finally {
+                    this.testTokenBtn.disabled = false;
+                    this.testTokenBtn.textContent = '🔑 测试API Token';
+                }
+            }
+            
+            async getBaiduAccessToken(ak, sk) {
+                // 使用代理服务器绕过CORS限制
+                const proxyUrl = '/proxy/baidu-token';
+                console.log('通过代理获取百度API token，URL:', proxyUrl);
+                
+                const formData = new URLSearchParams();
+                formData.append('ak', ak);
+                formData.append('sk', sk);
+                
+                const response = await fetch(proxyUrl, { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData
+                });
+                console.log('百度API token响应状态:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('百度API token请求失败，响应内容:', errorText);
+                    throw new Error(`获取百度API token失败: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('百度API token响应数据键:', Object.keys(data));
+                
+                if (data.error) {
+                    throw new Error(`百度API认证失败: ${data.error_description || data.error}`);
+                }
+                
+                if (!data.access_token) {
+                    throw new Error('百度API响应中没有access_token');
+                }
+                
+                return data.access_token;
+            }
+            
+            async testTTS() {
+                const text = this.textInput.value.trim();
+                if (!text) {
+                    this.showStatus('请输入要合成的文本！', 'error');
+                    return;
+                }
+                
+                const selectedEngine = document.querySelector('input[name="engine"]:checked');
+                if (!selectedEngine) {
+                    this.showStatus('请选择TTS引擎！', 'error');
+                    return;
+                }
+                
+                const engine = selectedEngine.value;
+                
+                if (engine === 'baidu') {
+                    if (text.length > 60) {
+                        this.showStatus('百度TTS文本长度不能超过60个字符！', 'error');
+                        return;
+                    }
+                    
+                    const selectedVoice = document.querySelector('input[name="voice"]:checked');
+                    if (!selectedVoice) {
+                        this.showStatus('请选择语音角色！', 'error');
+                        return;
+                    }
+                    
+                    await this.testBaiduTTS(text, selectedVoice.value);
+                } else if (engine === 'browser') {
+                    await this.testBrowserTTS(text);
+                }
+            }
+            
+            async testBaiduTTS(text, voice) {
+                const ak = this.baiduAK.value.trim();
+                const sk = this.baiduSK.value.trim();
+                
+                if (!ak || !sk) {
+                    this.showStatus('请输入百度API Key和Secret Key！', 'error');
+                    return;
+                }
+                
+                this.testBtn.disabled = true;
+                this.testBtn.textContent = '🔄 合成中...';
+                this.showStatus('正在调用百度TTS API...', 'loading');
+                this.hideAudioControls();
+                this.hideDebugInfo();
+                
+                try {
+                    const startTime = Date.now();
+                    
+                    // 获取access token
+                    const accessToken = await this.getBaiduAccessToken(ak, sk);
+                    
+                    // 从语音选择中提取语音ID
+                    const voiceId = voice.replace('baidu-', '');
+                    
+                    // 直接传输字符串文本，不进行编码
+                    console.log(`原始文本: "${text}"`);
+                    console.log(`直接传输文本: "${text}"`);
+                    
+                    // 根据官方API文档构建请求数据
+                    const requestData = {
+                        tex: text,   // 直接传输字符串文本
+                        tok: accessToken,   // 访问令牌
+                        cuid: 'Lb4nwynEiEtTYmg6L7VlgxYPKUDS76Mg', // 用户唯一标识
+                        ctp: '1',          // 客户端类型，web端填写固定值1
+                        lan: 'zh',         // 语言选择，固定值zh
+                        spd: '5',          // 语速，取值0-15，默认为5
+                        pit: '5',          // 音调，取值0-15，默认为5
+                        vol: '5',          // 音量，取值0-15，默认为5
+                        per: voiceId,      // 语音人选择
+                        aue: '3'           // 音频格式：3为mp3格式(默认)
+                    };
+                    
+                    console.log('百度TTS请求数据:', requestData);
+                    
+                    // 构建form data
+                    const formData = new URLSearchParams();
+                    Object.keys(requestData).forEach(key => {
+                        formData.append(key, requestData[key]);
+                    });
+                    
+                    // 通过代理发送请求
+                    const response = await fetch('/proxy/baidu-tts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Accept': '*/*'
+                        },
+                        body: formData
+                    });
+                    
+                    const endTime = Date.now();
+                    const duration = endTime - startTime;
+                    
+                    console.log('百度TTS响应状态:', response.status, response.statusText);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`百度TTS请求失败: ${response.status} - ${errorText}`);
+                    }
+                    
+                    // 检查响应内容类型
+                    const contentType = response.headers.get('content-type');
+                    console.log('响应内容类型:', contentType);
+                    
+                    if (contentType && contentType.includes('application/json')) {
+                        // 如果返回的是JSON，说明有错误
+                        const errorData = await response.json();
+                        throw new Error(`百度TTS错误: ${errorData.error_msg || JSON.stringify(errorData)}`);
+                    }
+                    
+                    // 获取音频数据
+                    const audioBlob = await response.blob();
+                    console.log('音频数据大小:', audioBlob.size, 'bytes');
+                    
+                    if (audioBlob.size === 0) {
+                        throw new Error('百度TTS返回的音频数据为空');
+                    }
+                    
+                    // 创建音频URL
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    
+                    // 显示成功状态
+                    this.showStatus(`✅ 百度TTS语音合成成功！耗时: ${duration}ms`, 'success');
+                    
+                    // 显示音频控件
+                    this.showAudioControls(audioUrl);
+                    
+                    // 显示调试信息
+                    this.showDebugInfo({
+                        request: {
+                            text: text,
+                            voice: voice,
+                            voiceId: voiceId,
+                            textLength: text.length,
+                            encodingMethod: 'direct_transmission'
+                        },
+                        response: {
+                            success: true,
+                            audioDataSize: audioBlob.size,
+                            contentType: contentType,
+                            duration: `${duration}ms`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                } catch (error) {
+                    console.error('百度TTS测试失败:', error);
+                    this.showStatus(`❌ 百度TTS语音合成失败: ${error.message}`, 'error');
+                    
+                    // 显示错误调试信息
+                    this.showDebugInfo({
+                        error: {
+                            message: error.message,
+                            stack: error.stack
+                        },
+                        request: {
+                            text: text,
+                            voice: voice,
+                            textLength: text.length
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                } finally {
+                    this.testBtn.disabled = false;
+                    this.testBtn.textContent = '🎵 测试语音合成';
+                }
+            }
+            
+            async testBrowserTTS(text) {
+                this.testBtn.disabled = true;
+                this.testBtn.textContent = '🔄 合成中...';
+                this.showStatus('正在使用浏览器TTS...', 'loading');
+                this.hideAudioControls();
+                this.hideDebugInfo();
+                
+                try {
+                    const startTime = Date.now();
+                    
+                    // 停止当前播放
+                    speechSynthesis.cancel();
+                    
+                    // 创建语音合成对象
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    
+                    // 设置语音
+                    const selectedVoiceName = this.browserVoiceSelect.value;
+                    if (selectedVoiceName) {
+                        const voices = speechSynthesis.getVoices();
+                        const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
+                        if (selectedVoice) {
+                            utterance.voice = selectedVoice;
+                        }
+                    }
+                    
+                    // 设置语音参数
+                    utterance.rate = 1.0;    // 语速
+                    utterance.pitch = 1.0;   // 音调
+                    utterance.volume = 0.8;  // 音量
+                    utterance.lang = 'zh-CN'; // 语言
+                    
+                    // 等待语音播放完成
+                    await new Promise((resolve, reject) => {
+                        utterance.onend = () => {
+                            const endTime = Date.now();
+                            const duration = endTime - startTime;
+                            
+                            this.showStatus(`✅ 浏览器TTS播放完成！耗时: ${duration}ms`, 'success');
+                            
+                            this.showDebugInfo({
+                                request: {
+                                    text: text,
+                                    voice: selectedVoiceName,
+                                    textLength: text.length
+                                },
+                                response: {
+                                    success: true,
+                                    duration: `${duration}ms`,
+                                    voiceUsed: utterance.voice?.name || '默认语音'
+                                },
+                                timestamp: new Date().toISOString()
+                            });
+                            
+                            resolve();
+                        };
+                        
+                        utterance.onerror = (error) => {
+                            reject(new Error(`浏览器TTS错误: ${error.error}`));
+                        };
+                        
+                        // 开始播放
+                        speechSynthesis.speak(utterance);
+                    });
+                    
+                } catch (error) {
+                    console.error('浏览器TTS测试失败:', error);
+                    this.showStatus(`❌ 浏览器TTS失败: ${error.message}`, 'error');
+                    
+                    this.showDebugInfo({
+                        error: {
+                            message: error.message,
+                            stack: error.stack
+                        },
+                        request: {
+                            text: text,
+                            textLength: text.length
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                } finally {
+                    this.testBtn.disabled = false;
+                    this.testBtn.textContent = '🎵 测试语音合成';
+                }
+            }
+        }
+        
+        // 初始化调试器
+        document.addEventListener('DOMContentLoaded', () => {
+            new StandaloneTTSDebugger();
+        });
+    </script>
+</body>
+</html>
