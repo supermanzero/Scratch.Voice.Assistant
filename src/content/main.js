@@ -535,13 +535,6 @@ class ScratchVoiceAssistant {
             </div>
             <div class="setting-item">
               <label class="setting-label">
-                <input type="checkbox" id="highlightSetting" checked>
-                <span class="checkmark"></span>
-                高亮显示相关积木
-              </label>
-            </div>
-            <div class="setting-item">
-              <label class="setting-label">
                 <input type="checkbox" id="subtitleSetting" checked>
                 <span class="checkmark"></span>
                 显示字幕
