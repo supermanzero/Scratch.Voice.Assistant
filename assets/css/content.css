@@ -24,6 +24,52 @@
   font-size: 14px;
 }
 
+/* 字幕容器 - 确保不与浮窗冲突 */
+.scratch-voice-subtitle {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999; /* 比浮窗稍低 */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.scratch-voice-subtitle.show {
+  opacity: 1;
+}
+
+.subtitle-content {
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 80vw;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  animation: subtitleFadeIn 0.3s ease-out;
+}
+
+@keyframes subtitleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* 主控件卡片 */
 .assistant-widget {
   background: hsl(var(--card));
@@ -461,6 +507,29 @@
   .control-btn {
     width: 36px;
     height: 36px;
+  }
+  
+  /* 移动设备字幕适配 */
+  .scratch-voice-subtitle {
+    bottom: 15px;
+  }
+  
+  .subtitle-content {
+    font-size: 14px;
+    padding: 10px 20px;
+    max-width: 90vw;
+  }
+}
+
+@media (max-width: 480px) {
+  .scratch-voice-subtitle {
+    bottom: 10px;
+  }
+  
+  .subtitle-content {
+    font-size: 13px;
+    padding: 8px 16px;
+    max-width: 95vw;
   }
 }
 
