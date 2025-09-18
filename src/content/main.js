@@ -181,18 +181,28 @@ class ScratchVoiceAssistant {
         // 停止当前音频
         if (this.currentAudio) {
           console.log("停止当前音频");
-          this.currentAudio.pause();
-          this.currentAudio.currentTime = 0;
-          // 移除所有事件监听器，防止内存泄漏
-          this.currentAudio.onplay = null;
-          this.currentAudio.onended = null;
-          this.currentAudio.onerror = null;
-          this.currentAudio.oncanplaythrough = null;
-          this.currentAudio = null;
+          try {
+            this.currentAudio.pause();
+            this.currentAudio.currentTime = 0;
+            // 清空音频源，确保完全停止
+            this.currentAudio.src = '';
+            this.currentAudio.load(); // 重新加载空源
+            // 移除所有事件监听器，防止内存泄漏
+            this.currentAudio.onplay = null;
+            this.currentAudio.onended = null;
+            this.currentAudio.onerror = null;
+            this.currentAudio.oncanplaythrough = null;
+            this.currentAudio.onloadstart = null;
+            this.currentAudio.onloadeddata = null;
+            this.currentAudio = null;
+          } catch (error) {
+            console.log("停止音频时出错:", error);
+            this.currentAudio = null;
+          }
         }
 
         // 停止浏览器 TTS
-        if (speechSynthesis.speaking) {
+        if (speechSynthesis.speaking || speechSynthesis.pending) {
           console.log("停止浏览器TTS");
           speechSynthesis.cancel();
         }
@@ -977,7 +987,7 @@ class ScratchVoiceAssistant {
     repeatBtn.disabled = false;
   }
 
-  togglePlay() {
+  async togglePlay() {
     // 确保有用户交互手势
     if (!this.hasUserInteracted) {
       this.hasUserInteracted = true;
@@ -991,11 +1001,17 @@ class ScratchVoiceAssistant {
     }
 
     if (this.isPlaying) {
-      this.stopSpeech();
+      // 强制停止所有音频
+      await this.forceStopAllAudio();
     } else {
       // 手动播放时，暂时停止自动播放定时器
       this.clearAutoPlayTimer();
-      this.playCurrentStep();
+      // 先强制停止所有音频，然后播放
+      await this.forceStopAllAudio();
+      // 稍微延迟以确保停止完成
+      setTimeout(() => {
+        this.playCurrentStep();
+      }, 100);
     }
   }
 
@@ -1052,11 +1068,11 @@ class ScratchVoiceAssistant {
     console.log("=== 统一入口speak方法 ===");
     console.log("开始播放新音频，文本:", text.substring(0, 20) + "...");
 
-    // 停止当前播放和自动播放定时器
-    this.stopSpeech();
+    // 强制停止所有音频播放
+    await this.forceStopAllAudio();
 
-    // 等待一小段时间确保音频完全停止
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // 等待更长时间确保音频完全停止
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     try {
       if (this.ttsService) {
@@ -1243,10 +1259,26 @@ class ScratchVoiceAssistant {
       // 7. 创建音频URL
       const audioUrl = URL.createObjectURL(audioBlob);
 
-      // 8. 构造 Audio，绑定事件
+      // 8. 在播放前再次确认没有其他音频在播放
+      if (this.ttsService.currentAudio) {
+        console.log("发现残留音频，强制停止");
+        try {
+          this.ttsService.currentAudio.pause();
+          this.ttsService.currentAudio.currentTime = 0;
+          this.ttsService.currentAudio.src = '';
+        } catch (e) {
+          console.log("停止残留音频时出错:", e);
+        }
+        this.ttsService.currentAudio = null;
+      }
+
+      // 9. 构造 Audio，绑定事件
       const audio = new Audio(audioUrl);
       audio.volume = this.ttsService.settings.volume;
       audio.playbackRate = this.ttsService.settings.speed;
+
+      // 设置音频为当前播放的音频
+      this.ttsService.currentAudio = audio;
 
       audio.onplay = () => {
         console.log("百度TTS音频开始播放");
@@ -1263,6 +1295,10 @@ class ScratchVoiceAssistant {
         this.updatePlayButton();
         // 清理URL对象
         URL.revokeObjectURL(audioUrl);
+        // 清理当前音频引用
+        if (this.ttsService.currentAudio === audio) {
+          this.ttsService.currentAudio = null;
+        }
         if (onEnd) onEnd();
       };
 
@@ -1273,12 +1309,16 @@ class ScratchVoiceAssistant {
         this.updatePlayButton();
         // 清理URL对象
         URL.revokeObjectURL(audioUrl);
+        // 清理当前音频引用
+        if (this.ttsService.currentAudio === audio) {
+          this.ttsService.currentAudio = null;
+        }
         if (onError) onError(err);
       };
 
-      // 9. 播放
+      // 10. 播放
+      console.log("开始播放百度TTS音频");
       await audio.play();
-      this.ttsService.currentAudio = audio;
     } catch (error) {
       console.error("百度TTS播放失败:", error);
       // 只抛出错误，不调用任何其他方法
@@ -1427,11 +1467,21 @@ class ScratchVoiceAssistant {
       this.ttsService?.settings || "无TTS服务"
     );
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
-        // 确保之前的语音已停止
-        if (speechSynthesis.speaking) {
+        // 强制确保之前的语音已停止
+        if (speechSynthesis.speaking || speechSynthesis.pending) {
+          console.log("强制停止之前的浏览器TTS");
           speechSynthesis.cancel();
+          // 等待一小段时间确保停止完成
+          await new Promise(resolveTimeout => setTimeout(resolveTimeout, 50));
+        }
+        
+        // 如果还在播放，再次尝试停止
+        if (speechSynthesis.speaking) {
+          console.log("再次尝试停止浏览器TTS");
+          speechSynthesis.cancel();
+          await new Promise(resolveTimeout => setTimeout(resolveTimeout, 50));
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
@@ -1486,11 +1536,13 @@ class ScratchVoiceAssistant {
             reject(error);
           };
 
-          // 确保之前的语音已停止
-          if (speechSynthesis.speaking) {
+          // 播放前最后一次确保没有其他语音在播放
+          if (speechSynthesis.speaking || speechSynthesis.pending) {
+            console.log("播放前发现残留语音，强制停止");
             speechSynthesis.cancel();
           }
 
+          console.log("开始播放浏览器TTS");
           speechSynthesis.speak(utterance);
         };
 
@@ -1531,6 +1583,75 @@ class ScratchVoiceAssistant {
     this.hideSubtitle();
 
     console.log("语音播放已停止");
+  }
+
+  // 强制停止所有音频播放
+  async forceStopAllAudio() {
+    console.log("=== 强制停止所有音频播放 ===");
+    
+    // 1. 清除自动播放定时器
+    this.clearAutoPlayTimer();
+    
+    // 2. 停止TTS服务中的音频
+    if (this.ttsService) {
+      console.log("停止TTS服务音频");
+      this.ttsService.stop();
+      
+      // 额外确保TTS服务的音频被停止
+      if (this.ttsService.currentAudio) {
+        try {
+          this.ttsService.currentAudio.pause();
+          this.ttsService.currentAudio.currentTime = 0;
+          this.ttsService.currentAudio.src = '';
+          this.ttsService.currentAudio = null;
+        } catch (error) {
+          console.log("停止TTS音频时出错:", error);
+        }
+      }
+    }
+    
+    // 3. 强制停止浏览器TTS
+    if (speechSynthesis.speaking || speechSynthesis.pending) {
+      console.log("强制停止浏览器TTS");
+      speechSynthesis.cancel();
+      
+      // 等待一小段时间确保取消完成
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // 如果还在播放，再次尝试停止
+      if (speechSynthesis.speaking) {
+        console.log("再次尝试停止浏览器TTS");
+        speechSynthesis.cancel();
+      }
+    }
+    
+    // 4. 停止页面中所有可能的Audio元素
+    const allAudioElements = document.querySelectorAll('audio');
+    allAudioElements.forEach((audio, index) => {
+      if (!audio.paused) {
+        console.log(`停止页面音频元素 ${index}`);
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch (error) {
+          console.log(`停止音频元素 ${index} 时出错:`, error);
+        }
+      }
+    });
+    
+    // 5. 重置播放状态
+    this.isPlaying = false;
+    if (this.ttsService) {
+      this.ttsService.isPlaying = false;
+    }
+    
+    // 6. 隐藏字幕
+    this.hideSubtitle();
+    
+    // 7. 更新UI
+    this.updatePlayButton();
+    
+    console.log("所有音频已强制停止");
   }
 
   // 显示字幕
@@ -1711,27 +1832,27 @@ class ScratchVoiceAssistant {
     this.saveWidgetSettings();
   }
 
-  previousStep() {
+  async previousStep() {
     if (!this.currentTutorial || this.currentStepIndex <= 0) return;
 
     console.log("切换到上一步");
     // 手动操作时停止自动播放
     this.clearAutoPlayTimer();
 
-    // 确保停止当前播放和隐藏字幕
-    this.stopSpeech();
+    // 强制停止所有音频播放
+    await this.forceStopAllAudio();
 
     this.currentStepIndex--;
     this.updateUI();
     this.saveCurrentTutorialState();
 
-    // 稍微延迟播放，确保停止操作完成
+    // 延迟播放，确保停止操作完全完成
     setTimeout(() => {
       this.playCurrentStep();
-    }, 150);
+    }, 300);
   }
 
-  nextStep() {
+  async nextStep() {
     if (
       !this.currentTutorial ||
       this.currentStepIndex >= this.currentTutorial.steps.length - 1
@@ -1745,17 +1866,17 @@ class ScratchVoiceAssistant {
       this.clearAutoPlayTimer();
     }
 
-    // 确保停止当前播放和隐藏字幕
-    this.stopSpeech();
+    // 强制停止所有音频播放
+    await this.forceStopAllAudio();
 
     this.currentStepIndex++;
     this.updateUI();
     this.saveCurrentTutorialState();
 
-    // 稍微延迟播放，确保停止操作完成
+    // 延迟播放，确保停止操作完全完成
     setTimeout(() => {
       this.playCurrentStep();
-    }, 150);
+    }, 300);
   }
 
   // 保存当前教程状态
@@ -1779,18 +1900,18 @@ class ScratchVoiceAssistant {
     }
   }
 
-  repeatStep() {
+  async repeatStep() {
     console.log("重复播放当前步骤");
     // 重复播放时停止自动播放定时器，避免冲突
     this.clearAutoPlayTimer();
 
-    // 确保停止当前播放和隐藏字幕
-    this.stopSpeech();
+    // 强制停止所有音频播放
+    await this.forceStopAllAudio();
 
-    // 稍微延迟播放，确保停止操作完成
+    // 延迟播放，确保停止操作完全完成
     setTimeout(() => {
       this.playCurrentStep();
-    }, 150);
+    }, 300);
   }
 
   toggleSettings() {
