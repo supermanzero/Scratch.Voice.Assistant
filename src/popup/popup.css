@@ -366,6 +366,7 @@ body {
 
 /* 设置部分 */
 .settings-section {
+  display: none;
   margin-bottom: 20px;
 }
 

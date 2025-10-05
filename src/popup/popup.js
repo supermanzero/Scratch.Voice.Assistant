@@ -788,7 +788,8 @@ class PopupManager {
   async openScratchEditor() {
     try {
       await chrome.tabs.create({
-        url: 'https://scratch.mit.edu/projects/editor/'
+        // url: 'https://scratch.mit.edu/projects/editor/'
+        url: 'https://machinelearningforkids.co.uk/scratch/'
       });
       window.close();
     } catch (error) {
@@ -1071,7 +1072,7 @@ class PopupManager {
 • 进度跟踪
 • 多语言支持
 
-开发者：Your Name
+开发者：Scratch噜噜
 许可证：MIT License`);
   }
 

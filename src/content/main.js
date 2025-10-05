@@ -576,12 +576,6 @@ class ScratchVoiceAssistant {
                 <span class="slider-value" id="speechVolumeValue">80%</span>
               </div>
             </div>
-            <div class="setting-item">
-              <button class="test-voice-btn" id="testVoiceBtn">
-                <img class="btn-icon" src="https://img.icons8.com/ios-glyphs/16/play--v1.png" alt="测试">
-                测试语音
-              </button>
-            </div>
           </div>
         </div>
       </div>
