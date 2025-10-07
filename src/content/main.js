@@ -703,7 +703,7 @@ class ScratchVoiceAssistant {
     select.innerHTML = '<option value="">请先选择套餐...</option>';
   }
 
-  // 从Firebase获取套餐数据
+  // 从API获取套餐数据
   async getPackagesFromFirebase() {
     try {
       // 通过background script获取套餐数据
@@ -719,12 +719,12 @@ class ScratchVoiceAssistant {
         );
       }
     } catch (error) {
-      console.error("从Firebase获取套餐数据失败:", error);
+      console.error("从API获取套餐数据失败:", error);
       throw error;
     }
   }
 
-  // 从Firebase获取教程数据
+  // 从API获取教程数据
   async getTutorialsFromFirebase() {
     try {
       // 通过background script获取教程数据
@@ -740,12 +740,12 @@ class ScratchVoiceAssistant {
         );
       }
     } catch (error) {
-      console.error("从Firebase获取教程数据失败:", error);
+      console.error("从API获取教程数据失败:", error);
       throw error;
     }
   }
 
-  // 刷新教程数据（从Firebase重新加载）
+  // 刷新教程数据（从API重新加载）
   async refreshTutorials() {
     try {
       console.log("刷新教程数据...");
@@ -812,24 +812,66 @@ class ScratchVoiceAssistant {
       console.log("为套餐加载课程:", packageId);
 
       // 获取套餐数据
-      const packages = await this.getPackagesFromFirebase();
-      const packageData = packages[packageId];
+      const packagesResponse = await this.getPackagesFromFirebase();
+      console.log("获取到的套餐数据:", packagesResponse);
+      
+      // API返回的是数组格式，需要找到对应的套餐
+      let packageData = null;
+      if (Array.isArray(packagesResponse)) {
+        packageData = packagesResponse.find(pkg => pkg.id === packageId);
+      } else if (packagesResponse[packageId]) {
+        packageData = packagesResponse[packageId];
+      }
 
       if (!packageData || !packageData.tutorialIds) {
-        console.warn("套餐数据无效或没有课程ID");
+        console.warn("套餐数据无效或没有课程ID:", packageData);
         return;
       }
 
+      console.log("找到套餐数据:", packageData);
+      console.log("套餐包含的教程ID:", packageData.tutorialIds);
+
       // 获取所有教程数据
-      const allTutorials = await this.getTutorialsFromFirebase();
+      const allTutorialsResponse = await this.getTutorialsFromFirebase();
+      console.log("获取到的教程数据:", allTutorialsResponse);
+
+      // 将教程数组转换为以ID为key的对象
+      const allTutorials = {};
+      if (Array.isArray(allTutorialsResponse)) {
+        allTutorialsResponse.forEach(tutorial => {
+          if (tutorial.id) {
+            allTutorials[tutorial.id] = tutorial;
+          }
+        });
+      } else {
+        // 如果已经是对象格式，直接使用
+        Object.assign(allTutorials, allTutorialsResponse);
+      }
+
+      console.log("处理后的教程数据:", Object.keys(allTutorials));
 
       // 筛选出套餐中的教程
       this.tutorials = {};
+      let foundCount = 0;
+      let missingCount = 0;
+      
       packageData.tutorialIds.forEach((tutorialId) => {
         if (allTutorials[tutorialId]) {
           this.tutorials[tutorialId] = allTutorials[tutorialId];
+          foundCount++;
+          console.log("添加教程:", tutorialId, allTutorials[tutorialId].title);
+        } else {
+          missingCount++;
+          console.warn("未找到教程:", tutorialId);
         }
       });
+      
+      console.log(`教程匹配统计: 找到 ${foundCount} 个，缺失 ${missingCount} 个`);
+      
+      if (missingCount > 0) {
+        console.warn(`⚠️ 套餐"${packageData.name}"中有 ${missingCount} 个教程在API中不存在`);
+        console.warn('建议检查教程数据同步状态或联系管理员');
+      }
 
       // 更新下拉选择
       const select = this.widget.querySelector("#tutorialSelect");
@@ -838,15 +880,43 @@ class ScratchVoiceAssistant {
       // 清空现有选项
       select.innerHTML = '<option value="">选择课程...</option>';
 
-      // 添加套餐中的课程选项
-      Object.keys(this.tutorials).forEach((key) => {
+      const tutorialKeys = Object.keys(this.tutorials);
+      
+      if (tutorialKeys.length === 0) {
+        // 如果没有找到任何教程，显示提示信息
         const option = document.createElement("option");
-        option.value = key;
-        option.textContent = this.tutorials[key].title;
+        option.value = "";
+        option.textContent = "该套餐暂无可用课程";
+        option.disabled = true;
         select.appendChild(option);
-      });
-
-      console.log("套餐课程加载完成:", Object.keys(this.tutorials));
+        console.warn("套餐中没有可用的教程");
+      } else {
+        // 如果有缺失的教程，在下拉选项中添加提示
+        if (missingCount > 0) {
+          const infoOption = document.createElement("option");
+          infoOption.value = "";
+          infoOption.textContent = `📋 可用课程 (${foundCount}/${packageData.tutorialIds.length})`;
+          infoOption.disabled = true;
+          infoOption.style.fontWeight = "bold";
+          infoOption.style.color = "#666";
+          select.appendChild(infoOption);
+        }
+        // 添加套餐中的课程选项
+        tutorialKeys.forEach((key) => {
+          const option = document.createElement("option");
+          option.value = key;
+          option.textContent = this.tutorials[key].title || `教程 ${key}`;
+          select.appendChild(option);
+        });
+        
+        console.log("套餐课程加载完成:", tutorialKeys);
+        console.log("成功加载的教程:");
+        tutorialKeys.forEach(key => {
+          console.log(`  - ${key}: ${this.tutorials[key].title}`);
+        });
+      }
+      
+      console.log("下拉选项数量:", select.options.length - 1); // 减去默认选项
     } catch (error) {
       console.error("加载套餐课程失败:", error);
     }

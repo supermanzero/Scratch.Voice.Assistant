@@ -1,91 +1,63 @@
-// Firebase 配置文件
-// 由于Chrome扩展的CSP限制，我们需要使用CDN版本的Firebase SDK
+// API配置文件
+// 使用Tutorial API替代直接的Firebase调用
 
-// Firebase 配置
-const firebaseConfig = {
-  apiKey: "AIzaSyCGAtiGTiGa-_cZxtJZvViBga_ci0SmusM",
-  authDomain: "scratch-21d62.firebaseapp.com",
-  projectId: "scratch-21d62",
-  storageBucket: "scratch-21d62.firebasestorage.app",
-  messagingSenderId: "655135966773",
-  appId: "1:655135966773:web:2c03b1e12d8d822031137c",
-  measurementId: "G-8MLLDD345R"
-};
+// 引入API服务
+// 注意：在浏览器环境中，需要确保apiService.js已经加载
+let apiService;
 
-// Firebase 初始化函数
-async function initializeFirebase() {
+// 初始化API服务
+async function initializeApiService() {
   try {
-    // 动态加载Firebase SDK
-    if (typeof firebase === 'undefined') {
-      // 加载Firebase SDK
-      await loadFirebaseSDK();
+    // 在浏览器环境中，apiService应该已经通过script标签加载
+    if (typeof window !== 'undefined' && window.apiService) {
+      apiService = window.apiService;
+      console.log('API服务初始化成功');
+      return apiService;
     }
     
-    // 初始化Firebase
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
+    // 在Node.js环境中，直接require
+    if (typeof require !== 'undefined') {
+      apiService = require('../services/apiService');
+      console.log('API服务初始化成功');
+      return apiService;
     }
     
-    // 初始化Firestore
-    const db = firebase.firestore();
-    
-    console.log('Firebase 初始化成功');
-    return db;
+    throw new Error('无法加载API服务');
   } catch (error) {
-    console.error('Firebase 初始化失败:', error);
+    console.error('API服务初始化失败:', error);
     throw error;
   }
 }
 
-// 动态加载Firebase SDK
-function loadFirebaseSDK() {
-  return new Promise((resolve, reject) => {
-    // 检查是否已经加载
-    if (typeof firebase !== 'undefined') {
-      resolve();
-      return;
+// 获取API服务实例（兼容原Firebase接口）
+async function initializeFirebase() {
+  try {
+    if (!apiService) {
+      apiService = await initializeApiService();
     }
     
-    // 创建script标签加载Firebase SDK
-    const script = document.createElement('script');
-    script.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
-    script.onload = () => {
-      // 加载Firestore
-      const firestoreScript = document.createElement('script');
-      firestoreScript.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js';
-      firestoreScript.onload = () => {
-        console.log('Firebase SDK 加载完成');
-        resolve();
-      };
-      firestoreScript.onerror = reject;
-      document.head.appendChild(firestoreScript);
-    };
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
+    // 返回兼容Firebase接口的对象
+    return apiService.getFirestore();
+  } catch (error) {
+    console.error('API服务初始化失败:', error);
+    throw error;
+  }
 }
 
-// 获取教程数据的函数
+// 获取教程数据的函数（使用新的API）
 async function getTutorialsFromFirebase() {
   try {
-    const db = await initializeFirebase();
+    if (!apiService) {
+      apiService = await initializeApiService();
+    }
     
-    // 从Firestore获取教程数据
-    const tutorialsRef = db.collection('tutorials');
-    const snapshot = await tutorialsRef.get();
+    // 使用API服务获取教程数据
+    const tutorials = await apiService.getTutorials();
     
-    const tutorials = {};
-    snapshot.forEach(doc => {
-      tutorials[doc.id] = {
-        id: doc.id,
-        ...doc.data()
-      };
-    });
-    
-    console.log('从Firebase获取教程数据:', tutorials);
+    console.log('从API获取教程数据:', tutorials);
     return tutorials;
   } catch (error) {
-    console.error('从Firebase获取教程数据失败:', error);
+    console.error('从API获取教程数据失败:', error);
     // 返回默认教程数据作为回退
     return getDefaultTutorials();
   }

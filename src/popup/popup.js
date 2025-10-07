@@ -38,7 +38,10 @@ class PopupManager {
 
   async checkLicenseStatus() {
     try {
-      // 动态加载授权服务
+      // 动态加载API服务和授权服务
+      if (typeof window.apiService === 'undefined') {
+        await this.loadApiService();
+      }
       if (typeof window.licenseService === 'undefined') {
         await this.loadLicenseService();
       }
@@ -78,6 +81,31 @@ class PopupManager {
       console.error('检查授权状态失败:', error);
       return false;
     }
+  }
+
+  async loadApiService() {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '../services/apiService.js';
+      script.onload = () => {
+        console.log('API服务脚本加载完成');
+        // 等待一下确保全局变量完全初始化
+        setTimeout(() => {
+          if (window.apiService) {
+            console.log('API服务全局变量已就绪');
+            resolve();
+          } else {
+            console.error('API服务全局变量未就绪');
+            reject(new Error('API服务全局变量未就绪'));
+          }
+        }, 100);
+      };
+      script.onerror = (error) => {
+        console.error('加载API服务脚本失败:', error);
+        reject(error);
+      };
+      document.head.appendChild(script);
+    });
   }
 
   async loadLicenseService() {
@@ -570,7 +598,18 @@ class PopupManager {
   async renderPackageList(packages) {
     const packageList = document.getElementById('packageList');
     
-    if (!packages || Object.keys(packages).length === 0) {
+    // 支持数组和对象格式
+    let packageArray = [];
+    if (Array.isArray(packages)) {
+      packageArray = packages;
+    } else if (packages && typeof packages === 'object') {
+      packageArray = Object.keys(packages).map(key => ({
+        id: key,
+        ...packages[key]
+      }));
+    }
+    
+    if (!packages || packageArray.length === 0) {
       packageList.innerHTML = `
         <div class="package-error">
           <p>暂无可用套餐</p>
@@ -583,11 +622,10 @@ class PopupManager {
     const result = await chrome.storage.local.get(['currentPackage']);
     const currentPackageId = result.currentPackage;
 
-    const packageKeys = Object.keys(packages);
     packageList.innerHTML = '';
 
-    packageKeys.forEach((packageId, index) => {
-      const packageData = packages[packageId];
+    packageArray.forEach((packageData, index) => {
+      const packageId = packageData.id;
       const isSelected = packageId === currentPackageId;
       const packageItem = this.createPackageItem(packageId, packageData, index, isSelected);
       packageList.appendChild(packageItem);
@@ -876,7 +914,15 @@ class PopupManager {
         return;
       }
 
-      if (!this.packages || !this.packages[packageId]) {
+      // 检查套餐是否存在（支持数组和对象格式）
+      let packageExists = false;
+      if (Array.isArray(this.packages)) {
+        packageExists = this.packages.some(pkg => pkg.id === packageId);
+      } else if (this.packages && this.packages[packageId]) {
+        packageExists = true;
+      }
+
+      if (!this.packages || !packageExists) {
         alert('套餐不存在或未加载');
         return;
       }

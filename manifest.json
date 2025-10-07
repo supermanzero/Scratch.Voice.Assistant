@@ -18,7 +18,8 @@
     "https://translate.google.com/*",
     "https://firebase.googleapis.com/*",
     "https://firestore.googleapis.com/*",
-    "https://*.googleapis.com/*"
+    "https://*.googleapis.com/*",
+    "http://47.79.88.53:3000/*"
   ],
   
   "content_scripts": [
